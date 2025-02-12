@@ -1,4 +1,4 @@
-name: surfel_splatting
+name: 2dgs 
 channels:
   - pytorch
   - nvidia
@@ -20,7 +20,8 @@ dependencies:
     - scikit-image==0.21.0
     - tqdm==4.66.2
     - trimesh==4.3.2
-    - submodules/diff-surfel-rasterization
-    - submodules/simple-knn
     - plyfile
     - opencv-python
+    # Install that seperatly 
+    # - submodules/diff-surfel-rasterization
+    # - submodules/simple-knn
