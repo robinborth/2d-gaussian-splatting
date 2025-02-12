@@ -586,3 +586,30 @@ class GaussianModel:
             viewspace_point_tensor.grad[update_filter], dim=-1, keepdim=True
         )
         self.denom[update_filter] += 1
+
+    def densification(self, I, iteration, opt, dataset, scene):
+        if iteration < opt.densify_until_iter:
+            self.max_radii2D[I.visibility_filter] = torch.max(
+                self.max_radii2D[I.visibility_filter],
+                I.radii[I.visibility_filter],
+            )
+            self.add_densification_stats(
+                I.viewspace_points,
+                I.visibility_filter,
+            )
+            if (
+                iteration > opt.densify_from_iter
+                and iteration % opt.densification_interval == 0
+            ):
+                size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                self.densify_and_prune(
+                    opt.densify_grad_threshold,
+                    opt.opacity_cull,
+                    scene.cameras_extent,
+                    size_threshold,
+                )
+
+            if iteration % opt.opacity_reset_interval == 0 or (
+                dataset.white_background and iteration == opt.densify_from_iter
+            ):
+                self.reset_opacity()

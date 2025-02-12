@@ -124,3 +124,21 @@ class Scene:
 
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
+
+    def get_validation_configs(self):
+        test_configs = {"name": "test", "cameras": self.getTestCameras()}
+        train_configs = {
+            "name": "train",
+            "cameras": [
+                self.getTrainCameras()[idx % len(self.getTrainCameras())]
+                for idx in range(5, 30, 5)
+            ],
+        }
+
+        # filter only valid configs
+        validation_configs = []
+        for config in (test_configs, train_configs):
+            if config["cameras"] and len(config["cameras"]) > 0:
+                validation_configs.append(config)
+
+        return validation_configs

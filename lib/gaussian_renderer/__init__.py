@@ -10,9 +10,11 @@
 #
 
 import math
+from types import SimpleNamespace
 
 import torch
 from diff_surfel_rasterization import GaussianRasterizationSettings, GaussianRasterizer
+from omegaconf import DictConfig
 
 from lib.scene.gaussian_model import GaussianModel
 from lib.utils.point_utils import depth_to_normal
@@ -196,27 +198,22 @@ def render(
     return rets
 
 
-def render_wrapper(pipe, dataset):
-    # Compute the default Background
-    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
-    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+class Renderer:
+    def __init__(self, pipe, dataset):
+        self.pipe = pipe
+        self.dataset = dataset
+        # Compute the default Background
+        bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+        self.background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
-    def func(camera, gaussians):
+    def __call__(self, camera, gaussians):
         render_pkg = render(
             camera,
             gaussians,
-            pipe,
-            background,
+            self.pipe,
+            self.background,
         )
-        image, viewspace_point, visibility_filter, radii = (
-            render_pkg["render"],
-            render_pkg["viewspace_points"],
-            render_pkg["visibility_filter"],
-            render_pkg["radii"],
-        )
-        return image, viewspace_point, visibility_filter, radii
-
-    return func
+        return SimpleNamespace(**render_pkg)
 
 
 def simple_renderer(
