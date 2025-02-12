@@ -13,7 +13,8 @@ import json
 import os
 import random
 
-from lib.arguments import ModelParams
+from omegaconf import DictConfig
+
 from lib.scene.dataset_readers import sceneLoadTypeCallbacks
 from lib.scene.gaussian_model import GaussianModel
 from lib.utils.camera_utils import camera_to_JSON, cameraList_from_camInfos
@@ -26,7 +27,7 @@ class Scene:
 
     def __init__(
         self,
-        args: ModelParams,
+        args: DictConfig,
         gaussians: GaussianModel,
         load_iteration=None,
         shuffle=True,
@@ -64,9 +65,10 @@ class Scene:
             assert False, "Could not recognize scene type!"
 
         if not self.loaded_iter:
-            with open(scene_info.ply_path, "rb") as src_file, open(
-                os.path.join(self.model_path, "input.ply"), "wb"
-            ) as dest_file:
+            with (
+                open(scene_info.ply_path, "rb") as src_file,
+                open(os.path.join(self.model_path, "input.ply"), "wb") as dest_file,
+            ):
                 dest_file.write(src_file.read())
             json_cams = []
             camlist = []

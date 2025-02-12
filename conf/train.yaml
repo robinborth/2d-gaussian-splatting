@@ -3,22 +3,60 @@
 defaults:
   - hydra: default
   - paths: default
+  - logger: wandb
   - _self_
 
-# Base configs
-seed: 123
-device: cuda
+scan_id: 105
+
+# logging settings
 task_name: optimize
-tags: 
-  - ${task_name}
+tags: [optimize]
 
+# dataset settings
+dataset:
+  data_device: cuda
+  eval: False
+  images: images
+  model_path: ${paths.output_dir}
+  render_items: [RGB, Alpha, Normal, Depth, Edge, Curvature]
+  resolution: 2
+  sh_degree: 3
+  source_path: ${paths.data_dir}/DTU/scan${scan_id}
+  white_background:  False
 
-SCAN: 63
-ROOT: /home/borth/2d-gaussian-splatting
-OUTPUT: $ROOT/output/
-DATA_DIR: $ROOT/data/DTU/scan$SCAN
-MODEL_DIR: $OUTPUT/11-02-25/scan$SCAN
-EVAL_INPUT_MESH: $MODEL_DIR/train/ours_30000/fuse_post.ply
-EVAL_OUTPUT_DIR: $MODEL_DIR/train/ours_30000
-MASK_DIR: $ROOT/data/DTU
-DTU_DIR: $ROOT/data/Offical_DTU_Dataset
+# pipeline settings
+pipeline:
+  compute_cov3D_python: False
+  convert_SHs_python: False
+  debug: False
+  depth_ratio: 1.0
+
+# optimization settings
+optimization:
+  densification_interval: 100
+  densify_from_iter: 500
+  densify_grad_threshold: 0.0002
+  densify_until_iter: 15000
+  feature_lr: 0.0025
+  iterations: 30000
+  lambda_dist: 1000
+  lambda_dssim: 0.2
+  lambda_normal: 0.05
+  opacity_cull: 0.05
+  opacity_lr: 0.05
+  opacity_reset_interval: 3000
+  percent_dense: 0.01
+  position_lr_delay_mult: 0.01
+  position_lr_final: 1.6e-06
+  position_lr_init: 0.00016
+  position_lr_max_steps: 30000
+  rotation_lr: 0.001
+  scaling_lr: 0.005
+
+# CLI arguments
+quiet: True
+detect_anomaly: False
+test_iterations: [7_000, 30_000]
+save_iterations: [7_000, 30_000]
+checkpoint_iterations: []
+checkpoint: null

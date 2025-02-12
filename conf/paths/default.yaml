@@ -1,5 +1,5 @@
 # path to root directory
-root_dir: /home/borth/GuidedResearch
+root_dir: /home/borth/2d-gaussian-splatting
 
 # path to data directory
 data_dir: ${paths.root_dir}/data

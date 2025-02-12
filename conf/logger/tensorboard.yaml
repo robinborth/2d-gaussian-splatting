@@ -1,3 +1,0 @@
-# @package logger 
-_target_: lib.logger.TensorboardLogger
-log_dir: ${paths.log_dir}
