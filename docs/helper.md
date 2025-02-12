@@ -4,7 +4,7 @@ conda env update --file environment.yml
 conda activate 2dgs
 pip install submodules/simple-knn
 pip install submodules/diff-surfel-rasterization
-pip install notebook jupyter tensorboard torch_tb_profiler
+pip install notebook jupyter tensorboard torch_tb_profiler wandb lightning
 
 # Viser Viewer Repo
 https://github.com/hwanhuh/2D-GS-Viser-Viewer

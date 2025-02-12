@@ -9,8 +9,47 @@ description = "A novel approach for real-time facial tracking and reconstruction
 authors = [{email = "robin.borth@tum.de"},{name = "Robin Borth"}]
 readme = "README.md"
 
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {file = "LICENSE.txt"}
+
+dependencies = [
+  # main 
+  "numpy",
+  "torch==2.4.1",
+  "torchvision==0.19.1",
+  "lightning",
+  "wandb",
+  "hydra-core",
+  "jupyter",
+  "tqdm",
+  "matplotlib",
+  "notebook",
+  "mediapipe",
+
+  # 2DGS
+  "open3d==0.18.0",
+  "mediapy==1.1.2",
+  "lpips==0.1.4",
+  "scikit-image==0.21.0",
+  "tqdm==4.66.2",
+  "trimesh==4.3.2",
+  "plyfile",
+  "opencv-python",
+  "ffmpeg",
+  "pillow==10.2.0",
+
+  # debugging
+  "tensorboard",
+  "torch_tb_profiler",
+  "moviepy",
+
+  # test
+  "black",
+  "flake8",
+  "mypy",
+  "isort",
+  "pytest",
+]
 
 [tool.isort]
 profile = "black"

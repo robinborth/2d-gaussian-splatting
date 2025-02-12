@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - hydra: default
+  - paths: default
+  - _self_
+
+# Base configs
+seed: 123
+device: cuda
+task_name: optimize
+tags: 
+  - ${task_name}
+
+
+SCAN: 63
+ROOT: /home/borth/2d-gaussian-splatting
+OUTPUT: $ROOT/output/
+DATA_DIR: $ROOT/data/DTU/scan$SCAN
+MODEL_DIR: $OUTPUT/11-02-25/scan$SCAN
+EVAL_INPUT_MESH: $MODEL_DIR/train/ours_30000/fuse_post.ply
+EVAL_OUTPUT_DIR: $MODEL_DIR/train/ours_30000
+MASK_DIR: $ROOT/data/DTU
+DTU_DIR: $ROOT/data/Offical_DTU_Dataset
