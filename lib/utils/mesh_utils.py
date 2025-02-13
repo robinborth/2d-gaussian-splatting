@@ -322,6 +322,7 @@ class GaussianExtractor(object):
                 extrinsic=cam_o3d.extrinsic,
             )
 
+        # TODO format? to trimesh?
         mesh = volume.extract_triangle_mesh()
         return mesh
 

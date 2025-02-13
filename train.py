@@ -127,8 +127,8 @@ def main(cfg: DictConfig):
                 iteration=iteration,
                 scan_id=cfg.eval.scan,
                 dataset_dir=cfg.eval.dataset_dir,
-                mesh_name=cfg.eval.mesh,
-                patch_size=cfg.eval.path_size,
+                mesh_name=cfg.eval.mesh_name,
+                patch_size=cfg.eval.patch_size,
                 max_dist=cfg.eval.max_dist,
                 downsample_density=cfg.eval.downsample_density,
             )

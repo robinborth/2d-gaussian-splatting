@@ -6,6 +6,7 @@ import numpy as np
 import open3d as o3d
 import sklearn.neighbors as skln
 from scipy.io import loadmat
+from tqdm import tqdm
 
 
 def sample_single_tri(input_):
@@ -18,6 +19,36 @@ def sample_single_tri(input_):
     k = c[c.sum(axis=-1) < 1]  # m2
     q = v1 * k[:, :1] + v2 * k[:, 1:] + tri_vert
     return q
+
+
+# def write_vis_pcd(file, points, colors):
+#     pcd = o3d.geometry.PointCloud()
+#     pcd.points = o3d.utility.Vector3dVector(points)
+#     pcd.colors = o3d.utility.Vector3dVector(colors)
+#     o3d.io.write_point_cloud(file, pcd)
+
+
+# def visualize_error():
+#     # visualize error
+#     vis_dist = args.visualize_threshold
+#     R = np.array([[1, 0, 0]], dtype=np.float64)
+#     G = np.array([[0, 1, 0]], dtype=np.float64)
+#     B = np.array([[0, 0, 1]], dtype=np.float64)
+#     W = np.array([[1, 1, 1]], dtype=np.float64)
+#     data_color = np.tile(B, (data_down.shape[0], 1))
+#     data_alpha = dist_d2s.clip(max=vis_dist) / vis_dist
+#     _idx = np.where(inbound)[0][grid_inbound][in_obs]
+#     data_color[_idx] = R * data_alpha + W * (1 - data_alpha)
+#     _idx = np.where(inbound)[0][grid_inbound][in_obs][dist_d2s[:, 0] >= max_dist]
+#     data_color[_idx] = G
+#     path = f"{args.vis_out_dir}/vis_{args.scan:03}_d2s.ply"
+#     write_vis_pcd(path, data_down, data_color)
+
+#     stl_color = np.tile(B, (stl.shape[0], 1))
+#     stl_alpha = dist_s2d.clip(max=vis_dist) / vis_dist
+#     stl_color[np.where(above)[0]] = R * stl_alpha + W * (1 - stl_alpha)
+#     stl_color[np.where(above)[0][dist_s2d[:, 0] >= max_dist]] = G
+#     write_vis_pcd(f"{args.vis_out_dir}/vis_{args.scan:03}_s2d.ply", stl, stl_color)
 
 
 def mesh_to_pcd(mesh_path, thresh):
@@ -70,10 +101,18 @@ def evaluate(
     max_dist: int,
     downsample_density: int,
 ):
+    mp.freeze_support()
+
+    pbar = tqdm(total=8)
+
+    pbar.update(1)
+    pbar.set_description("random shuffle pcd index")
     # random shuffle pcd index
     shuffle_rng = np.random.default_rng()
     shuffle_rng.shuffle(data_pcd, axis=0)
 
+    pbar.update(1)
+    pbar.set_description("downsample pcd")
     # downsample pcd
     nn_engine = skln.NearestNeighbors(
         n_neighbors=1,
@@ -82,16 +121,22 @@ def evaluate(
         n_jobs=-1,
     )
     nn_engine.fit(data_pcd)
+    pbar.update(1)
+    pbar.set_description("radius_neighbors")
     rnn_idxs = nn_engine.radius_neighbors(
         data_pcd, radius=downsample_density, return_distance=False
     )
     mask = np.ones(data_pcd.shape[0], dtype=np.bool_)
+    pbar.update(1)
+    pbar.set_description("enumerate loop")
     for curr, idxs in enumerate(rnn_idxs):
         if mask[curr]:
             mask[idxs] = 0
             mask[curr] = 1
     data_down = data_pcd[mask]
 
+    pbar.update(1)
+    pbar.set_description("masking data pcd")
     # masking data pcd
     obs_mask_file = loadmat(f"{dataset_dir}/ObsMask/ObsMask{scan_id}_10.mat")
     ObsMask, BB, Res = [obs_mask_file[attr] for attr in ["ObsMask", "BB", "Res"]]
@@ -110,11 +155,15 @@ def evaluate(
     in_obs = in_obs.astype(np.bool_)
     data_in_obs = data_in[grid_inbound][in_obs]
 
+    pbar.update(1)
+    pbar.set_description("read STL pcd")
     # read STL pcd
     path = f"{dataset_dir}/Points/stl/stl{scan_id:03}_total.ply"
     stl_pcd = o3d.io.read_point_cloud(path)
     stl = np.asarray(stl_pcd.points)
 
+    pbar.update(1)
+    pbar.set_description("compute data2stl")
     # compute data2stl
     nn_engine.fit(stl)
     dist_d2s, _ = nn_engine.kneighbors(
@@ -124,6 +173,8 @@ def evaluate(
     )
     mean_d2s = dist_d2s[dist_d2s < max_dist].mean()
 
+    pbar.update(1)
+    pbar.set_description("compute stl2data")
     # compute stl2data
     ground_plane = loadmat(f"{dataset_dir}/ObsMask/Plane{scan_id}.mat")["P"]
     stl_hom = np.concatenate([stl, np.ones_like(stl[:, :1])], -1)
@@ -141,7 +192,7 @@ def evaluate(
     over_all = (mean_d2s + mean_s2d) / 2
 
     return {
-        "mean_d2s": mean_d2s,
-        "mean_s2d": mean_s2d,
-        "overall": over_all,
+        "chamfer_d2s": mean_d2s,
+        "chamfer_s2d": mean_s2d,
+        "chamfer": over_all,
     }

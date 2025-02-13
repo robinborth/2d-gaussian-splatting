@@ -38,7 +38,7 @@ DTU_DIR=$ROOT/data/Offical_DTU_Dataset
 #      --DTU $DTU_DIR
 
 
-python scripts/eval_dtu/eval.py \
+python scripts/eval_dtu/eval_old.py \
      --data $EVAL_OUTPUT_MESH \
      --scan $SCAN \
      --mode mesh \

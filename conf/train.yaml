@@ -71,12 +71,13 @@ mesh:
   iteration: -1
 
 eval:
-  dataset_dir: ${paths.data_dir}/Official_DTU_Dataset
+  dataset_dir: ${paths.data_dir}/Offical_DTU_Dataset
+  mesh_name: fuse_cull.ply
+  data: ${dataset.model_path}/train/ours_${optimization.iterations}/${eval.mesh_name}
   scan: ${scan_id}
-  mesh: fuse_cull.ply
   mode: mesh
   downsample_density: 0.2
-  path_size: 60
+  patch_size: 60
   max_dist: 20
   visualize_threshold: 10
 
