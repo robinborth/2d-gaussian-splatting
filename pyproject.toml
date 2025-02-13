@@ -37,6 +37,7 @@ dependencies = [
   "opencv-python",
   "ffmpeg",
   "pillow==10.2.0",
+  "pyrender",
 
   # debugging
   "tensorboard",

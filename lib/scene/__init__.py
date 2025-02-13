@@ -39,6 +39,7 @@ class Scene:
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
+        self.source_path = args.source_path
 
         if load_iteration:
             if load_iteration == -1:
@@ -125,15 +126,16 @@ class Scene:
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
 
-    def get_validation_configs(self):
+    def get_validation_configs(self, reduced: bool = False):
         test_configs = {"name": "test", "cameras": self.getTestCameras()}
-        train_configs = {
-            "name": "train",
-            "cameras": [
+
+        train_cameras = self.getTrainCameras()
+        if reduced:
+            train_cameras = [
                 self.getTrainCameras()[idx % len(self.getTrainCameras())]
                 for idx in range(5, 30, 5)
-            ],
-        }
+            ]
+        train_configs = {"name": "train", "cameras": train_cameras}
 
         # filter only valid configs
         validation_configs = []

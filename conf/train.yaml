@@ -53,6 +53,33 @@ optimization:
   rotation_lr: 0.001
   scaling_lr: 0.005
 
+mesh:
+  # important for train.py
+  voxel_size: 0.004
+  sdf_trunc: 0.02
+  depth_trunc: 3.0
+  resolution: 1024
+  num_clusters: 50
+  skip_mesh: False
+  fuse_post: True
+  fuse_cull: True
+  # important for render.py
+  unbounded: False
+  skip_test: False
+  skip_train: False
+  render_path: False
+  iteration: -1
+
+eval:
+  dataset_dir: ${paths.data_dir}/Official_DTU_Dataset
+  scan: ${scan_id}
+  mesh: fuse_cull.ply
+  mode: mesh
+  downsample_density: 0.2
+  path_size: 60
+  max_dist: 20
+  visualize_threshold: 10
+
 # CLI arguments
 quiet: True
 detect_anomaly: False

@@ -32,7 +32,7 @@ def main(cfg: DictConfig):
     log.info(f"==> initializing logger <{cfg.logger._target_}> ...")
     logger = hydra.utils.instantiate(cfg.logger)
 
-    log.info("==> initializing dataset...")
+    log.info("==> initializing dataset ...")
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians)
 
@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        # pick a random camera
+        # pick a random camera from the remaining
         if not cameras:
             cameras = scene.getTrainCameras().copy()
         camera = cameras.pop(randint(0, len(cameras) - 1))
@@ -77,18 +77,16 @@ def main(cfg: DictConfig):
         # compute regularization loss
         lambda_normal = opt.lambda_normal if iteration > 7000 else 0.0
         lambda_dist = opt.lambda_dist if iteration > 3000 else 0.0
-
         normal_error = (1 - (I.rend_normal * I.surf_normal).sum(dim=0))[None]
         normal_loss = lambda_normal * (normal_error).mean()
         dist_loss = lambda_dist * (I.rend_dist).mean()
 
-        # compute total loss
+        # compute total loss and perform backward pass
         total_loss = loss + dist_loss + normal_loss
         total_loss.backward()
-
         iter_end.record()
 
-        # logging
+        # update the progress bar
         logger.progress_step(
             loss=loss,
             dist_loss=dist_loss,
@@ -98,47 +96,66 @@ def main(cfg: DictConfig):
             iterations=opt.iterations,
             progress_bar=progress_bar,
         )
-        with torch.no_grad():
-            metrics = {
-                "train/total_loss": loss.item(),
-                "train/dist_loss": logger.ema_dist_loss,
-                "train/normal_loss": logger.ema_normal_loss,
-                "train/reg_loss": loss_l1.item(),
-                "train/iter_time": iter_start.elapsed_time(iter_end),
-                "train/total_poitns": scene.gaussians.get_xyz.shape[0],
-            }
-            logger.log_metrics(metrics=metrics, step=iteration)
-            logger.report(
+
+        # update the metrics
+        metrics = {
+            "train/total_loss": loss.item(),
+            "train/dist_loss": logger.ema_dist_loss,
+            "train/normal_loss": logger.ema_normal_loss,
+            "train/reg_loss": loss_l1.item(),
+            "train/iter_time": iter_start.elapsed_time(iter_end),
+            "train/total_poitns": scene.gaussians.get_xyz.shape[0],
+        }
+        logger.log_metrics(metrics=metrics, step=iteration)
+
+        # perform detailed log
+        if iteration in cfg.test_iterations:
+            logger.report(scene=scene, render=render)
+            logger.mesh(
                 scene=scene,
                 render=render,
                 iteration=iteration,
-                test_iterations=cfg.test_iterations,
+                voxel_size=cfg.mesh.voxel_size,
+                sdf_trunc=cfg.mesh.sdf_trunc,
+                depth_trunc=cfg.mesh.depth_trunc,
+                num_clusters=cfg.mesh.num_clusters,
+                fuse_post=cfg.mesh.fuse_post,
+                fuse_cull=cfg.mesh.fuse_cull,
             )
-
-            if iteration in cfg.save_iterations:
-                print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
-
-            # Densification
-            gaussians.densification(
-                I=I,
-                iteration=iteration,
-                opt=opt,
-                dataset=dataset,
+            logger.evaluate(
                 scene=scene,
+                iteration=iteration,
+                scan_id=cfg.eval.scan,
+                dataset_dir=cfg.eval.dataset_dir,
+                mesh_name=cfg.eval.mesh,
+                patch_size=cfg.eval.path_size,
+                max_dist=cfg.eval.max_dist,
+                downsample_density=cfg.eval.downsample_density,
             )
 
-            # Optimizer step
-            if iteration < cfg.optimization.iterations:
-                gaussians.optimizer.step()  # type: ignore
-                gaussians.optimizer.zero_grad(set_to_none=True)  # type: ignore
+        if iteration in cfg.save_iterations:
+            log.info(f"[ITER {iteration}] Saving Gaussians")
+            scene.save(iteration)
 
-            if iteration in cfg.checkpoint_iterations:
-                print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                torch.save(
-                    (gaussians.capture(), iteration),
-                    scene.model_path + "/chkpnt" + str(iteration) + ".pth",
-                )
+        # perform densification
+        gaussians.densification(
+            I=I,
+            iteration=iteration,
+            opt=opt,
+            dataset=dataset,
+            scene=scene,
+        )
+
+        # perform optimizer step
+        if iteration < cfg.optimization.iterations:
+            gaussians.optimizer.step()  # type: ignore
+            gaussians.optimizer.zero_grad(set_to_none=True)  # type: ignore
+
+        # save the gaussian checkpoint
+        if iteration in cfg.checkpoint_iterations:
+            log.info(f"[ITER {iteration}] Saving Checkpoint")
+            path = scene.model_path + "/chkpnt" + str(iteration) + ".pth"
+            torch.save((gaussians.capture(), iteration), path)
 
 
 if __name__ == "__main__":

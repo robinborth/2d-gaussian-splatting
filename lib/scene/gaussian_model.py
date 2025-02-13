@@ -587,6 +587,7 @@ class GaussianModel:
         )
         self.denom[update_filter] += 1
 
+    @torch.no_grad()
     def densification(self, I, iteration, opt, dataset, scene):
         if iteration < opt.densify_until_iter:
             self.max_radii2D[I.visibility_filter] = torch.max(

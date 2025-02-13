@@ -8,31 +8,137 @@
 #
 # For inquiries contact  huangbb@shanghaitech.edu.cn
 #
-
-import math
+import copy
+import glob
 import os
-from functools import partial
+from pathlib import Path
+from typing import Any
 
+import cv2
 import numpy as np
 import open3d as o3d
 import torch
+import torch.nn.functional as F
 import trimesh
+from skimage.morphology import binary_dilation, disk
+from torch.nn.functional import normalize
 from tqdm import tqdm
 
-from lib.utils.render_utils import save_img_f32, save_img_u8
+from lib.utils.render_utils import load_K_Rt_from_P, save_img_f32, save_img_u8
 
 
-def post_process_mesh(mesh, cluster_to_keep=1000):
+def cull_scan_dtu(
+    source_path: str,
+    mesh_path: str,
+    mesh_name="fuse_cull.ply",
+):
+    # load poses
+    image_dir = f"{source_path}/images"
+    image_paths = sorted(glob.glob(os.path.join(image_dir, "*.png")))
+    n_images = len(image_paths)
+    cam_file = f"{source_path}/cameras.npz"
+    camera_dict = np.load(cam_file)
+    scale_mats = [
+        camera_dict["scale_mat_%d" % idx].astype(np.float32) for idx in range(n_images)
+    ]
+    world_mats = [
+        camera_dict["world_mat_%d" % idx].astype(np.float32) for idx in range(n_images)
+    ]
+
+    intrinsics_all = []
+    pose_all = []
+    for scale_mat, world_mat in zip(scale_mats, world_mats):
+        P = world_mat @ scale_mat
+        P = P[:3, :4]
+        intrinsics, pose = load_K_Rt_from_P(None, P)
+        intrinsics_all.append(torch.from_numpy(intrinsics).float())
+        pose_all.append(torch.from_numpy(pose).float())
+
+    # load mask
+    mask_dir = f"{source_path}/mask"
+    mask_paths = sorted(glob.glob(os.path.join(mask_dir, "*.png")))
+    masks = []
+    for p in mask_paths:
+        mask = cv2.imread(p)
+        masks.append(mask)
+
+    # hard-coded image shape
+    W, H = 1600, 1200
+
+    # load mesh
+    mesh: Any = trimesh.load(mesh_path)
+
+    # load transformation matrix
+    vertices = mesh.vertices
+
+    # project and filter
+    vertices = torch.from_numpy(vertices).cuda()
+    vertices = torch.cat((vertices, torch.ones_like(vertices[:, :1])), dim=-1)
+    vertices = vertices.permute(1, 0)
+    vertices = vertices.float()
+
+    sampled_masks: Any = []
+    for i in tqdm(range(n_images), desc="Culling mesh given masks"):
+        pose = pose_all[i]
+        w2c = torch.inverse(pose).cuda()
+        intrinsic = intrinsics_all[i].cuda()
+
+        with torch.no_grad():
+            # transform and project
+            cam_points = intrinsic @ w2c @ vertices
+            pix_coords = cam_points[:2, :] / (cam_points[2, :].unsqueeze(0) + 1e-6)
+            pix_coords = pix_coords.permute(1, 0)
+            pix_coords[..., 0] /= W - 1
+            pix_coords[..., 1] /= H - 1
+            pix_coords = (pix_coords - 0.5) * 2
+            valid = ((pix_coords > -1.0) & (pix_coords < 1.0)).all(dim=-1).float()
+
+            # dialate mask similar to unisurf
+            maski = masks[i][:, :, 0].astype(np.float32) / 256.0
+            maski = (
+                torch.from_numpy(binary_dilation(maski, disk(24)))
+                .float()[None, None]
+                .cuda()
+            )
+
+            sampled_mask = F.grid_sample(
+                maski,
+                pix_coords[None, None],
+                mode="nearest",
+                padding_mode="zeros",
+                align_corners=True,
+            )[0, -1, 0]
+
+            sampled_mask = sampled_mask + (1.0 - valid)
+            sampled_masks.append(sampled_mask)
+
+    sampled_masks = torch.stack(sampled_masks, -1)
+
+    # filter
+    mask = (sampled_masks > 0.0).all(dim=-1).cpu().numpy()
+    face_mask = mask[mesh.faces].all(axis=1)
+    mesh.update_vertices(mask)
+    mesh.update_faces(face_mask)
+
+    # transform vertices to world
+    scale_mat = scale_mats[0]
+    mesh.vertices = mesh.vertices * scale_mat[0, 0] + scale_mat[:3, 3][None]
+
+    result_mesh_file = str(Path(mesh_path).parent / mesh_name)
+    mesh.export(result_mesh_file)
+    del mesh
+
+
+def post_process_mesh(mesh, cluster_to_keep=1000, verbose: bool = False):
     """
     Post-process a mesh to filter out floaters and disconnected parts
     """
-    import copy
 
-    print(
-        "post processing the mesh to have {} clusterscluster_to_kep".format(
-            cluster_to_keep
+    if verbose:
+        print(
+            f"post processing the mesh to have {cluster_to_keep} clusterscluster_to_kep"
         )
-    )
+
     mesh_0 = copy.deepcopy(mesh)
     with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
         triangle_clusters, cluster_n_triangles, cluster_area = (
@@ -48,8 +154,9 @@ def post_process_mesh(mesh, cluster_to_keep=1000):
     mesh_0.remove_triangles_by_mask(triangles_to_remove)
     mesh_0.remove_unreferenced_vertices()
     mesh_0.remove_degenerate_triangles()
-    print("num vertices raw {}".format(len(mesh.vertices)))
-    print("num vertices post {}".format(len(mesh_0.vertices)))
+    if verbose:
+        print("num vertices raw {}".format(len(mesh.vertices)))
+        print("num vertices post {}".format(len(mesh_0.vertices)))
     return mesh_0
 
 
@@ -86,7 +193,7 @@ def to_cam_open3d(viewpoint_stack):
 
 
 class GaussianExtractor(object):
-    def __init__(self, gaussians, render, pipe, bg_color=None):
+    def __init__(self, gaussians, render, verbose: bool = False):
         """
         a class that extracts attributes a scene presented by 2DGS
 
@@ -95,44 +202,34 @@ class GaussianExtractor(object):
         >>> gaussExtrator.reconstruction(view_points)
         >>> mesh = gaussExtractor.export_mesh_bounded(...)
         """
-        if bg_color is None:
-            bg_color = [0, 0, 0]
-        background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
         self.gaussians = gaussians
-        self.render = partial(render, pipe=pipe, bg_color=background)
+        self.render = render
+        self.verbose = verbose
         self.clean()
 
     @torch.no_grad()
     def clean(self):
         self.depthmaps = []
-        # self.alphamaps = []
+        self.alphamaps = []
         self.rgbmaps = []
-        # self.normals = []
-        # self.depth_normals = []
+        self.normals = []
+        self.depth_normals = []
         self.viewpoint_stack = []
 
     @torch.no_grad()
-    def reconstruction(self, viewpoint_stack):
+    def reconstruction(self, viewpoint_stack, desc="reconstruct radiance fields"):
         """
         reconstruct radiance field given cameras
         """
         self.clean()
         self.viewpoint_stack = viewpoint_stack
-        for i, viewpoint_cam in tqdm(
-            enumerate(self.viewpoint_stack), desc="reconstruct radiance fields"
-        ):
-            render_pkg = self.render(viewpoint_cam, self.gaussians)
-            rgb = render_pkg["render"]
-            alpha = render_pkg["rend_alpha"]
-            normal = torch.nn.functional.normalize(render_pkg["rend_normal"], dim=0)
-            depth = render_pkg["surf_depth"]
-            depth_normal = render_pkg["surf_normal"]
-            self.rgbmaps.append(rgb.cpu())
-            self.depthmaps.append(depth.cpu())
-            # self.alphamaps.append(alpha.cpu())
-            # self.normals.append(normal.cpu())
-            # self.depth_normals.append(depth_normal.cpu())
-
+        for viewpoint_cam in tqdm(self.viewpoint_stack, desc=desc):
+            I = self.render(viewpoint_cam, self.gaussians)
+            self.rgbmaps.append(I.render.cpu())
+            self.depthmaps.append(I.surf_depth.cpu())
+            self.alphamaps.append(I.rend_alpha.cpu())
+            self.normals.append(normalize(I.rend_normal, dim=0).cpu())
+            self.depth_normals.append(I.surf_normal.cpu())
         # self.rgbmaps = torch.stack(self.rgbmaps, dim=0)
         # self.depthmaps = torch.stack(self.depthmaps, dim=0)
         # self.alphamaps = torch.stack(self.alphamaps, dim=0)
@@ -156,12 +253,17 @@ class GaussianExtractor(object):
         center = focus_point_fn(poses)
         self.radius = np.linalg.norm(c2ws[:, :3, 3] - center, axis=-1).min()
         self.center = torch.from_numpy(center).float().cuda()
-        print(f"The estimated bounding radius is {self.radius:.2f}")
-        print(f"Use at least {2.0 * self.radius:.2f} for depth_trunc")
+        if self.verbose:
+            print(f"The estimated bounding radius is {self.radius:.2f}")
+            print(f"Use at least {2.0 * self.radius:.2f} for depth_trunc")
 
     @torch.no_grad()
     def extract_mesh_bounded(
-        self, voxel_size=0.004, sdf_trunc=0.02, depth_trunc=3, mask_backgrond=True
+        self,
+        voxel_size=0.004,
+        sdf_trunc=0.02,
+        depth_trunc=3,
+        mask_backgrond=True,
     ):
         """
         Perform TSDF fusion given a fixed depth range, used in the paper.
@@ -169,14 +271,15 @@ class GaussianExtractor(object):
         voxel_size: the voxel size of the volume
         sdf_trunc: truncation value
         depth_trunc: maximum depth range, should depended on the scene's scales
-        mask_backgrond: whether to mask backgroud, only works when the dataset have masks
+        mask_backgrond: whether to mask backgroud, only works when dataset have masks
 
         return o3d.mesh
         """
-        print("Running tsdf volume integration ...")
-        print(f"voxel_size: {voxel_size}")
-        print(f"sdf_trunc: {sdf_trunc}")
-        print(f"depth_truc: {depth_trunc}")
+        if self.verbose:
+            print("Running tsdf volume integration ...")
+            print(f"voxel_size: {voxel_size}")
+            print(f"sdf_trunc: {sdf_trunc}")
+            print(f"depth_truc: {depth_trunc}")
 
         volume = o3d.pipelines.integration.ScalableTSDFVolume(
             voxel_length=voxel_size,
@@ -184,10 +287,11 @@ class GaussianExtractor(object):
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
         )
 
-        for i, cam_o3d in tqdm(
-            enumerate(to_cam_open3d(self.viewpoint_stack)),
-            desc="TSDF integration progress",
-        ):
+        cameras = enumerate(to_cam_open3d(self.viewpoint_stack))
+        if self.verbose:
+            cameras = tqdm(cameras, desc="TSDF integration progress")
+
+        for i, cam_o3d in cameras:
             rgb = self.rgbmaps[i]
             depth = self.depthmaps[i]
 
@@ -213,7 +317,9 @@ class GaussianExtractor(object):
             )
 
             volume.integrate(
-                rgbd, intrinsic=cam_o3d.intrinsic, extrinsic=cam_o3d.extrinsic
+                rgbd,
+                intrinsic=cam_o3d.intrinsic,
+                extrinsic=cam_o3d.extrinsic,
             )
 
         mesh = volume.extract_triangle_mesh()
