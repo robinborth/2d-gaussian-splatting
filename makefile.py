@@ -81,23 +81,10 @@ def build_makefile(groups):
 def main():
     groups = []
 
-    values = [65, 105]
-    prefixs = values
-    group_name = "optimizes_mean_depth"
-    template_generator = """
-    python train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	scan_id={value} \\
-	pipeline.depth_ratio=0.0 \\
-    """
-    groups.append(build_group(template_generator, values, prefixs, group_name))
+    values = [24, 37, 40, 55, 63, 65, 69, 83, 97, 105, 106, 110, 114, 118, 122]
 
-    values = [65, 105]
     prefixs = values
-    group_name = "optimizes_median_depth"
+    group_name = "scene"
     template_generator = """
     python train.py \\
     logger.group={group_name} \\
@@ -105,7 +92,6 @@ def main():
     logger.tags=[{group_name},{task_name}] \\
     task_name={task_name} \\
 	scan_id={value} \\
-	pipeline.depth_ratio=1.0 \\
     """
     groups.append(build_group(template_generator, values, prefixs, group_name))
 

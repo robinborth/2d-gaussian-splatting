@@ -11,6 +11,14 @@ scan105:
 		--lambda_normal 0.05 \
 		--lambda_dist 1000
 
+train:
+	python train.py \
+	scan_id=24 \
+	mesh.voxel_size=-1 \
+	mesh.sdf_trunc=-1 \
+	mesh.depth_trunc=-1 \
+	mesh.resolution=1024 \
+
 debug:
 	python train.py \
 	optimization.iterations=100 \
