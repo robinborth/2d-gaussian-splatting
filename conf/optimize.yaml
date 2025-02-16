@@ -1,0 +1,90 @@
+# @package _global_
+
+defaults:
+  - hydra: default
+  - paths: default
+  - logger: gaussian 
+  - _self_
+
+scan_id: 105
+
+# logging settings
+task_name: optimize
+tags: [optimize]
+
+# dataset settings
+dataset:
+  data_device: cuda
+  eval: False
+  images: images
+  model_path: ${paths.output_dir}
+  render_items: [RGB, Alpha, Normal, Depth, Edge, Curvature]
+  resolution: 2
+  sh_degree: 3
+  source_path: ${paths.data_dir}/DTU/scan${scan_id}
+  white_background:  False
+
+# pipeline settings
+pipeline:
+  compute_cov3D_python: False
+  convert_SHs_python: False
+  debug: False
+  depth_ratio: 1.0
+
+# optimization settings
+optimization:
+  densification_interval: 100
+  densify_from_iter: 500
+  densify_grad_threshold: 0.0002
+  densify_until_iter: 15000
+  feature_lr: 0.0025
+  iterations: 30000
+  lambda_dist: 1000
+  lambda_dssim: 0.2
+  lambda_normal: 0.05
+  opacity_cull: 0.05
+  opacity_lr: 0.05
+  opacity_reset_interval: 3000
+  percent_dense: 0.01
+  position_lr_delay_mult: 0.01
+  position_lr_final: 1.6e-06
+  position_lr_init: 0.00016
+  position_lr_max_steps: 30000
+  rotation_lr: 0.001
+  scaling_lr: 0.005
+
+mesh:
+  # important for train.py
+  voxel_size: 0.004
+  sdf_trunc: 0.02
+  depth_trunc: 3.0
+  resolution: 1024
+  num_clusters: 50
+  skip_mesh: False
+  fuse_post: True
+  fuse_cull: True
+  # important for render.py
+  unbounded: False
+  skip_test: False
+  skip_train: False
+  render_path: False
+  iteration: -1
+
+eval:
+  dataset_dir: ${paths.data_dir}/Offical_DTU_Dataset
+  mesh_name: fuse_cull.ply
+  data: ${dataset.model_path}/train/ours_${optimization.iterations}/${eval.mesh_name}
+  scan: ${scan_id}
+  mode: mesh
+  downsample_density: 0.2
+  patch_size: 60
+  max_dist: 20
+  visualize_threshold: 10
+
+# CLI arguments
+quiet: True
+detect_anomaly: False
+test_iterations: [7_000, 30_000]
+save_iterations: [7_000, 30_000]
+checkpoint_iterations: []
+checkpoint: null

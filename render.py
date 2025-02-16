@@ -13,7 +13,7 @@ from lib.utils.render_utils import create_videos, generate_path
 log = logging.getLogger()
 
 
-@hydra.main(version_base=None, config_path="./conf", config_name="train")
+@hydra.main(version_base=None, config_path="./conf", config_name="optimize")
 def main(cfg: DictConfig):
     log.info("==> initializing configs ...")
     dataset = cfg.dataset

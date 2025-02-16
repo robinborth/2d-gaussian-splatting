@@ -13,7 +13,7 @@ from tqdm import tqdm
 from lib.utils.eval_utils import evaluate, mesh_to_pcd
 
 
-@hydra.main(version_base=None, config_path="../../conf", config_name="train")
+@hydra.main(version_base=None, config_path="../../conf", config_name="optimize")
 def main(cfg: DictConfig):
     mp.freeze_support()
 

@@ -1,0 +1,7 @@
+# @package callbacks
+
+defaults:
+  - model_checkpoint
+  - model_summary
+  - learning_rate_monitor
+  - rich_progress_bar

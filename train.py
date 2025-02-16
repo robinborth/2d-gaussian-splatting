@@ -14,7 +14,7 @@ from lib.utils.loss_utils import l1_loss, ssim
 log = logging.getLogger()
 
 
-@hydra.main(version_base=None, config_path="./conf", config_name="train")
+@hydra.main(version_base=None, config_path="./conf", config_name="optimize")
 def main(cfg: DictConfig):
     log.info("==> initializing configs ...")
     # initialize system state
