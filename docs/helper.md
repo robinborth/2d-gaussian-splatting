@@ -6,6 +6,9 @@ pip install submodules/simple-knn
 pip install submodules/diff-surfel-rasterization
 pip install notebook jupyter tensorboard torch_tb_profiler wandb lightning
 
+<!-- conda install pytorch3d -c pytorch3d -->
+<!-- pip install "git+https://github.com/facebookresearch/pytorch3d.git" -->
+
 # Viser Viewer Repo
 https://github.com/hwanhuh/2D-GS-Viser-Viewer
 
