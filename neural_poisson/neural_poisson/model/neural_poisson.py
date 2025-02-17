@@ -37,7 +37,7 @@ class NeuralPoisson(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # evaluate the data
-        x = self.forward(points=batch["points"])
+        x = self.forward(points=batch["points_surface"])
 
         # compute the loss
         loss = ((x - 0.5) ** 2).mean()  # l2-loss

@@ -17,8 +17,23 @@ shuffle: True
 dataset:
   _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
   _partial_: True
+  # dataset settings
   path: ${data.data_dir}/models/model_normalized.obj
-  device: ${device}
   image_size: 256
   segments: 10
+  # training settings
   batch_size: ${data.batch_size}
+  device: ${device}
+  # subsampling settings
+  resolution: 0.01
+  # empty space sampling
+  empty_points_per_ray: 4
+  close_points_per_ray: 2
+  close_points_surface_threshold: 0.01
+  # vector field settings 
+  vector_field_mode: nearest_neighbor  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
+  normalize: True
+  chunk_size: 1_000
+  k: 20
+  sigma: 1.0
+  chunk_threshold:  30

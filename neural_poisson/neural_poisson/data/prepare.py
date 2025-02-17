@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 import open3d as o3d
 import torch
@@ -232,11 +234,24 @@ def sample_empty_space_points(
     return p_e
 
 
-def subsample_points(points: torch.Tensor, resolution: float = 0.01):
+def subsample_points(points: torch.Tensor, resolution: float = 0.01, normals=None):
+    # fill the point cloud
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points.detach().cpu().numpy())
+    if normals is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normals.detach().cpu().numpy())
+
+    # downsample the point cloud
     pcd = pcd.voxel_down_sample(voxel_size=resolution)
-    return torch.tensor(np.asarray(pcd.points)).to(points)
+
+    # extract the points
+    points = torch.tensor(np.asarray(pcd.points)).to(points)
+    if normals is None:
+        return points
+
+    # extract the normals if normals are provided as input
+    normals = torch.tensor(np.asarray(pcd.normals)).to(normals)
+    return points, normals
 
 
 ################################################################################
@@ -244,7 +259,7 @@ def subsample_points(points: torch.Tensor, resolution: float = 0.01):
 ################################################################################
 
 
-def estimate_vector_field_using_clustering(
+def estimate_vector_field_cluster(
     points: torch.Tensor,
     normals: torch.Tensor,
     query: torch.Tensor,
@@ -280,9 +295,8 @@ def estimate_vector_field_using_clustering(
                 # activate the current cluster by disabeling all others
                 cluster_weights = weights.clone()
                 cluster_weights[cluster_idxs != j] = 0.0
-                cluster_vector = (normals[indices] * cluster_weights.unsqueeze(-1)).sum(
-                    -2
-                )
+                cluster_vector = normals[indices] * cluster_weights.unsqueeze(-1)
+                cluster_vector = cluster_vector.sum(-2)
                 cluster_vector /= cluster_weights.sum(-1, keepdim=True)
 
                 # compute cosine similartiy between cluster vector and current vector
@@ -385,3 +399,37 @@ def estimate_vector_field_nearest_neighbor(
             vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
         vectors.append(vector)
     return torch.cat(vectors)
+
+
+def select_vector_field_function(
+    vector_field_mode: str = "nearest_neighbor",
+    normalize: bool = True,
+    chunk_size: int = 1_000,
+    k: int = 20,
+    sigma: float = 1.0,
+    threshold: float = 30,
+):
+    if vector_field_mode == "nearest_neighbor":
+        return partial(
+            estimate_vector_field_nearest_neighbor,
+            normalize=normalize,
+            chunk_size=chunk_size,
+        )
+    if vector_field_mode == "k_nearest_neighbors":
+        return partial(
+            estimate_vector_field_k_nearest_neighbors,
+            k=k,
+            sigma=sigma,
+            normalize=normalize,
+            chunk_size=chunk_size,
+        )
+    if vector_field_mode == "cluster":
+        return partial(
+            estimate_vector_field_cluster,
+            k=k,
+            sigma=sigma,
+            normalize=normalize,
+            chunk_size=chunk_size,
+            threshold=threshold,
+        )
+    raise AttributeError(f"Please select a correct {vector_field_mode=}!")
