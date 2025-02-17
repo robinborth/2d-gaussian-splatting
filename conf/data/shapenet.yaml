@@ -1,0 +1,24 @@
+# @package data
+_target_: neural_poisson.data.shapenet.ShapeNetCoreDatamodule
+
+# dataset settings
+shapenet_id: 1a04e3eab45ca15dd86060f189eb133
+data_dir: ${paths.data_dir}/ShapeNetCoreTiny/02691156/${data.shapenet_id}
+
+# training settings
+batch_size: 100_000
+num_workers: 0
+pin_memory: False
+drop_last: False
+persistent_workers: False
+shuffle: True
+
+# dataset settings
+dataset:
+  _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
+  _partial_: True
+  path: ${data.data_dir}/models/model_normalized.obj
+  device: ${device}
+  image_size: 256
+  segments: 10
+  batch_size: ${data.batch_size}

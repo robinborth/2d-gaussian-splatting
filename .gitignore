@@ -2,7 +2,6 @@
 .vscode
 output
 build
-data
 *.ply
 **/PKG-INFO
 # submodules
@@ -15,4 +14,4 @@ eval
 wandb
 logs
 Makefile.abl
-data/
+/data
