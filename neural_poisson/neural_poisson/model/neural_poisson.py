@@ -37,11 +37,25 @@ class NeuralPoisson(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # evaluate the data
-        x = self.forward(points=batch["points_surface"])
+        xs = self.forward(points=batch["points_surface"])
+        xe = self.forward(points=batch["points_empty"])
+        xc = self.forward(points=batch["points_close"])
 
-        # compute the loss
-        loss = ((x - 0.5) ** 2).mean()  # l2-loss
-        self.log("train/loss", loss, prog_bar=True)
+        # surface constraint
+        loss_surface = ((xs - 0.5) ** 2).mean()  # l2-loss
+        self.log("train/loss_surface", loss_surface)
+
+        # empty space constraint
+        loss_close = (xc**2).mean()  # l2-loss
+        loss_empty = (xe**2).mean()  # l2-loss
+        loss_empty_space = (torch.cat([xe, xc]) ** 2).mean()  # l2-loss
+        self.log("train/loss_close", loss_close)
+        self.log("train/loss_empty", loss_empty)
+        self.log("train/loss_empty_space", loss_surface)
+
+        # total loss
+        loss = loss_surface + loss_empty_space
+        self.log("train/loss", loss_surface, prog_bar=True)
 
         # log the images
         normal_map = batch["normal_map"].detach().cpu().numpy()

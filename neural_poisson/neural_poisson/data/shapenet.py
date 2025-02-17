@@ -64,6 +64,7 @@ class ShapeNetCoreDataset(Dataset):
         segments: int = 10,
         # training settings
         batch_size: int = 100_000,
+        epoch_size: int = 100,
         device: str = "cuda",
         # subsampling settings
         resolution: float = 0.01,
@@ -86,6 +87,7 @@ class ShapeNetCoreDataset(Dataset):
 
         # settings
         self.batch_size = batch_size
+        self.epoch_size = epoch_size
         self.points_type_dict = {"surface": 0, "close": 1, "empty": 2}
 
         # prepare the vector field estimation function
@@ -192,7 +194,7 @@ class ShapeNetCoreDataset(Dataset):
         return points[idx], vectors[idx]
 
     def __len__(self):
-        return len(self.points) // self.batch_size
+        return self.epoch_size
 
     def __getitem__(self, idx: int):
         points_surface, vectors_surface = self.random_selection(

@@ -5,7 +5,7 @@ accelerator: ${device}
 # training
 min_epochs: 1 
 max_epochs: 100
-accumulate_grad_batches: 1
+# accumulate_grad_batches: 1
 # limit_train_batches: 256 
 
 # logging

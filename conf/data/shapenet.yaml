@@ -6,7 +6,8 @@ shapenet_id: 1a04e3eab45ca15dd86060f189eb133
 data_dir: ${paths.data_dir}/ShapeNetCoreTiny/02691156/${data.shapenet_id}
 
 # training settings
-batch_size: 100_000
+batch_size: 5_000
+epoch_size: 100
 num_workers: 0
 pin_memory: False
 drop_last: False
@@ -23,15 +24,16 @@ dataset:
   segments: 10
   # training settings
   batch_size: ${data.batch_size}
+  epoch_size: ${data.epoch_size}
   device: ${device}
   # subsampling settings
-  resolution: 0.01
+  resolution: 0.002
   # empty space sampling
   empty_points_per_ray: 4
   close_points_per_ray: 2
   close_points_surface_threshold: 0.01
   # vector field settings 
-  vector_field_mode: nearest_neighbor  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
+  vector_field_mode: k_nearest_neighbors  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
   normalize: True
   chunk_size: 1_000
   k: 20
