@@ -2,6 +2,9 @@
 
 defaults:
   - model: neural_poisson 
+  - encoder: mlp
+  - optimizer: adam
+  - scheduler: none
   - logger: wandb
   - data: shapenet
   - trainer: default

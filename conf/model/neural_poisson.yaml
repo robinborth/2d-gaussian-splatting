@@ -2,21 +2,20 @@
 
 _target_: neural_poisson.model.neural_poisson.NeuralPoisson
 
-# module setting
-hidden_dim: 512
-num_layers: 8
+# different hydra groups
+encoder: ???
+optimizer: ???
+scheduler: ???
 
-# training settings
-optimizer:
-  _target_: torch.optim.Adam 
-  _partial_: True
-  lr: 1e-04
-monitor: train/loss
-# scheduler: null
-scheduler:
-  _partial_: True
-  _target_: torch.optim.lr_scheduler.LinearLR
-  total_iters: 10000 
-  start_factor: 1.0
-  end_factor: 1e-02
+# network settings
+lambda_gradient: 1.0
+lambda_surface: 100.0
+lambda_empty_space: 100.0
 
+# indicator settings
+indicator_function: center  # default, center
+
+# marching cubes
+voxel_size: 256
+domain: [-1.0, 1.0]
+chunk_size: 10_000

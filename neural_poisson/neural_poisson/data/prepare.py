@@ -120,8 +120,8 @@ def extract_surface_data(camera, mesh, image_size: int):
 
     return {
         "depth_map": depth_map,
-        "normal_map": normal_map,
-        "point_map": point_map,
+        "normal_map": normal_map[0],  # assume that batch size is 1
+        "point_map": point_map[0],  # assume that batch size is 1
         "mask": mask,
         "normals": normals,
         "points": points,
