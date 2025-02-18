@@ -113,15 +113,31 @@ def extract_surface_data(camera, mesh, image_size: int):
     normal_map = depth_to_normals(depth=depth_map, mask=mask, camera=camera)
     point_map = depth_to_points(depth=depth_map, mask=mask, camera=camera)
 
+    # remove the batch_size
+    # normal_map = normal_map[0]
+    # point_map = point_map[0]
+    # depth_map = depth_map[0]
+    # mask = mask[0]
+
+    # transform point and normal map to world space
+    # P = camera.get_world_to_view_transform()
+    # normal_map = P.inverse().transform_normals(normal_map)
+    # point_map = P.inverse().transform_points(point_map)
+
     # compute the points in world space and remove the masks
+    # normals = normal_map[~mask]
+    # points = point_map[~mask]
+
     P = camera.get_world_to_view_transform()
     normals = P.inverse().transform_normals(normal_map[~mask])
     points = P.inverse().transform_points(point_map[~mask])
 
     return {
         "depth_map": depth_map,
-        "normal_map": normal_map[0],  # assume that batch size is 1
-        "point_map": point_map[0],  # assume that batch size is 1
+        # "normal_map": normal_map,
+        # "point_map": point_map,
+        "normal_map": normal_map[0],
+        "point_map": point_map[0],
         "mask": mask,
         "normals": normals,
         "points": points,

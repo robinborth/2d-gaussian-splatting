@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - hydra: default
+  - paths: default
+  - _self_
+
+task_name: makefile 
+suffix: abl 
+debug: True
