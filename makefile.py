@@ -129,7 +129,7 @@ def main(cfg: DictConfig):
     makefile_generator = MakefileGenerator(suffix=cfg.suffix)
     makefile_generator.debug_template = """
     trainer.max_epochs=10 \\
-    data.epoch_size=2 \\
+    data.epoch_size=1 \\
     data.dataset.vector_field_mode=nearest_neighbor \\
     data.dataset.image_size=128 \\
     data.dataset.resolution=0.05 \\
@@ -137,9 +137,25 @@ def main(cfg: DictConfig):
     callbacks.model_checkpoint.every_n_epochs=5 \\
     """
 
-    values = [1e-03]
+    values: Any = [
+        1e-02,
+        3e-02,
+        5e-02,
+        7e-02,
+        9e-02,
+        1e-03,
+        3e-03,
+        5e-03,
+        7e-03,
+        9e-03,
+        1e-04,
+        3e-04,
+        5e-04,
+        7e-04,
+        9e-04,
+    ]
     prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "scene"
+    group_name = "learning_rate"
     template_generator = """
     python neural_poisson/train.py \\
     logger.group={group_name} \\
@@ -147,6 +163,29 @@ def main(cfg: DictConfig):
     logger.tags=[{group_name},{task_name}] \\
     task_name={task_name} \\
 	model.optimizer.lr={value} \\
+    model.lambda_gradient=1.0 \\
+	model.lambda_surface=1.0 \\
+	model.lambda_empty_space=1.0 \\
+    trainer.max_epochs=1000 \\
+    data.epoch_size=50 \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = ["nearest_neighbor", "k_nearest_neighbors", "cluster"]
+    prefixs = values
+    group_name = "vector_field"
+    template_generator = """
+    python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	model.optimizer.lr=1e-03 \\
+    model.lambda_gradient=1.0 \\
+	model.lambda_surface=1.0 \\
+	model.lambda_empty_space=1.0 \\
+    trainer.max_epochs=1000 \\
+    data.epoch_size=50 \\
     """
     makefile_generator.add(template_generator, values, prefixs, group_name)
 
