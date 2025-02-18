@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Any
 
 import torch.nn as nn
@@ -15,21 +16,28 @@ class MLP(nn.Sequential):
         activation: str = "relu",
     ):
         layers: list[Any] = []
+        names: list[str] = []
 
         # input layers
         layers.append(nn.Linear(in_dim, hidden_dim))
+        names.append("layer_0")
         layers.append(activation_fn(activation))
+        names.append(f"{activation}_0")
 
         # hidden layers
-        for _ in range(num_layers):
+        for i in range(num_layers):
             layers.append(nn.Linear(hidden_dim, hidden_dim))
+            names.append(f"layer_{i+1}")
             layers.append(activation_fn(activation))
+            names.append(f"{activation}_{i+1}")
 
         # output layer
-        layers.append(nn.Linear(hidden_dim, out_dim))
+        layers.append(nn.Linear(hidden_dim, out_dim, bias=False))
+        names.append(f"layer_{i+2}")
 
         # self.mlp = nn.Sequential(*layers)
-        super().__init__(*layers)
+        ordered_dict = OrderedDict(zip(names, layers))
+        super().__init__(ordered_dict)
 
     def forward(self, x):
         return super().forward(x)

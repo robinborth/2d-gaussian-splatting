@@ -5,6 +5,7 @@ import open3d as o3d
 import torch
 import torch.nn as nn
 import wandb
+from lightning.pytorch.utilities import grad_norm
 from pytorch3d.ops import marching_cubes
 
 
@@ -29,7 +30,7 @@ class NeuralPoisson(L.LightningModule):
         **kwargs,
     ):
         super().__init__()
-        self.save_hyperparameters(logger=False, ignore=["encoder"])
+        self.save_hyperparameters(logger=False)
 
         # for default: [0,1]; for center: [-0.5, 0.5]
         self.X_offset = 0.0
@@ -41,7 +42,7 @@ class NeuralPoisson(L.LightningModule):
         # the encoder takes as input a point cloud of dim (B, P, 3) and produces the
         # logits of the indicator function which are then encoded with a tanh/sin
         # function to be in the range of (-0.5, 0.5)
-        self.encoder = encoder
+        self.encoder = encoder()
 
     def configure_optimizers(self):
         """Default lightning optimizer setup."""
@@ -62,7 +63,12 @@ class NeuralPoisson(L.LightningModule):
         # gradients from a loss scalar. The chain rule is dL/dp = dL/dX * dX/dp. In order to
         # compute dX/dp we need to define the loss function do get dL/dX = 1, which results in
         # a simple summation of dX, e.g. L=X.sum(), where the derivatives are 1.
-        return torch.autograd.grad(X.sum(), points, retain_graph=True)[0]
+        return torch.autograd.grad(
+            outputs=X.sum(),
+            inputs=points,
+            retain_graph=True,
+            create_graph=True,
+        )[0]
 
     def forward(self, points: torch.Tensor):
         """Evaluates the indicator function for the given points."""
@@ -153,41 +159,109 @@ class NeuralPoisson(L.LightningModule):
 
         return output
 
-    def logging_step(self, batch: dict, output: dict, mode: str = "train"):
+    def logging_metrics(self, batch: dict, output: dict, mode: str = "train"):
         # log the total loss to the progress bar
-        self.log("loss", output["total_loss"], prog_bar=True, logger=False)
+        self.log(f"{mode}/loss", output["total_loss"], prog_bar=True, logger=False)
 
-        # log the stats to WandB
+        # combine all the metrics together to only send one request to WandB
         unified_output = {}
+
+        # log the different loss information in different sections
         for key, value in output["loss"].items():
-            unified_output[f"{mode}/loss/{key}"] = value
+            if key in ["surface", "total", "gradient", "empty_space"]:
+                name = f"Loss Overview ({mode})"
+                unified_output[f"{name}/{key}"] = value
+        for key, value in output["loss"].items():
+            if key.startswith("empty_space"):
+                name = f"Empty Space Loss Overview ({mode})"
+                unified_output[f"{name}/{key}"] = value
+        for key, value in output["loss"].items():
+            if key.startswith("gradient"):
+                name = f"Gradient Loss Overview ({mode})"
+                unified_output[f"{name}/{key}"] = value
+
+        # log the timings of the indicator function and gradient computation
         for key, value in output["time"].items():
-            unified_output[f"{mode}/time/{key}"] = value
+            name = f"Time Overview ({mode})"
+            unified_output[f"{name}/{key}"] = value
+
+        # log the stats of the gradients of the indicator function
         for key, value in output["stats"].items():
-            unified_output[f"{mode}/stats/{key}"] = value
+            name = f"Stats Overview ({mode})"
+            if key.startswith("dX") and key.endswith("mean"):
+                unified_output[f"{name}/{key}"] = value
+
+        # perform the logging
         self.log_dict(unified_output, prog_bar=False)
 
+    def logging_images(self, batch: dict, output: dict, mode: str = "train"):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map = self.forward(points=point_map)
         dX_point_map = self.compute_gradient(x_point_map, point_map)
         # log the images
+        name = f"Image-{batch['camera_idx']:03} ({mode})"
         img_X = wandb.Image(x_point_map.detach().cpu().numpy())
         img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
         img_N = wandb.Image(batch["normal_map"].detach().cpu().numpy())
-        self.logger.log_image(f"{mode}/images", [img_X, img_dX, img_N])  # type: ignore
+        self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
+        self.logger.log_image(f"{name}/gradient", [img_dX])  # type: ignore
+        self.logger.log_image(f"{name}/normal", [img_N])  # type: ignore
+
+    def logging_optimizer(self, mode: str = "train"):
+        # extreact the information from the training
+        optimizer = self.optimizers()._optimizer  # type: ignore
+
+        # skipts the logging for the first optimizer call
+        if not optimizer.state_dict()["state"]:
+            return
+
+        # extract the state dict and param groups
+        layer = 0
+        state = optimizer.state_dict()["state"][layer]
+        params = optimizer.param_groups[0]
+
+        m_hat_t = state["exp_avg"] / (1 - params["betas"][0] ** state["step"])
+        v_hat_t = state["exp_avg_sq"] / (1 - params["betas"][1] ** state["step"])
+        lr_modifier = m_hat_t / (torch.sqrt(v_hat_t) + params["eps"])
+        histogram = wandb.Histogram(lr_modifier.detach().cpu())
+        self.logger.experiment.log({"Learning Rate Modifier": histogram})
+
+    def on_before_optimizer_step(self, optimizer):
+        norms = grad_norm(self.encoder, norm_type=2)
+        self.log_dict(norms)
+
+        # log the wandb gradients as histograms
+        histograms = {}
+        for name, p in self.encoder.named_parameters():
+            if p.grad is None:
+                continue
+            h = wandb.Histogram(p.grad.data.detach().cpu())
+            histograms[f"grad_histogram/{name}"] = h
+        self.logger.experiment.log(histograms)
+
+        # log the weights distribution of the layers
+        histograms = {}
+        for name, p in self.encoder.named_parameters():
+            h = wandb.Histogram(p.data.detach().cpu())
+            histograms[f"weights_histogram/{name}"] = h
+        self.logger.experiment.log(histograms)
 
     def training_step(self, batch: dict, batch_idx: int):
         """Perform training step."""
         output = self.model_step(batch)
         if batch_idx == 0:
-            self.logging_step(batch, output, "train")
+            self.logging_images(batch, output, "train")
+        self.logging_optimizer("train")
+        self.logging_metrics(batch, output, "train")
         return output["total_loss"]
 
     def validation_step(self, batch: dict, batch_idx: int):
         """Perform validation step."""
         output = self.model_step(batch)
-        self.logging_step(batch, output, "val")
+        if batch_idx == 0:
+            self.logging_images(batch, output, "val")
+        self.logging_metrics(batch, output, "val")
         return output["total_loss"]
 
     def to_mesh(self) -> o3d.geometry.TriangleMesh:

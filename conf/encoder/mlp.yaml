@@ -2,6 +2,7 @@
 
 encoder:
   _target_: neural_poisson.model.encoder.MLP
+  _partial_: True
   in_dim: 3
   out_dim: 1
   hidden_dim: 256 
