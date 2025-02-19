@@ -17,7 +17,7 @@ indicator_function: center  # default, center
 activation: sigmoid  # sin, sigmoid
 
 # logging
-log_camera_idxs: [6]
+log_camera_idxs: ${data.dataset.log_camera_idxs}
 
 # marching cubes
 voxel_size: 256

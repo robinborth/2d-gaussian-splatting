@@ -55,11 +55,6 @@ def select_random_points(points: torch.Tensor, max_samples: int):
     return points[torch.randperm(len(points))[:max_samples]]
 
 
-def select_random_camera(cameras: list):
-    idx = random.choice(range(len(cameras)))
-    return cameras[idx], idx
-
-
 def load_mesh(path: str, device: str = "cuda"):
     return load_objs_as_meshes([path], device=device)
 
@@ -194,7 +189,7 @@ def extract_surface_data(
     points = point_map[~mask]
 
     # compute the indicator map
-    indicator_map = torch.ones_like(mask)
+    indicator_map = torch.ones_like(mask, dtype=points.dtype)
     indicator_map[mask] = 0.0
 
     return {
@@ -577,6 +572,8 @@ def estimate_vector_field_nearest_neighbor(
 
 
 def select_vector_field_function(
+    points: torch.Tensor,
+    normals: torch.Tensor,
     vector_field_mode: str = "nearest_neighbor",
     normalize: bool = True,
     chunk_size: int = 1_000,
@@ -587,12 +584,16 @@ def select_vector_field_function(
     if vector_field_mode == "nearest_neighbor":
         return partial(
             estimate_vector_field_nearest_neighbor,
+            points=points,
+            normals=normals,
             normalize=normalize,
             chunk_size=chunk_size,
         )
     if vector_field_mode == "k_nearest_neighbors":
         return partial(
             estimate_vector_field_k_nearest_neighbors,
+            points=points,
+            normals=normals,
             k=k,
             sigma=sigma,
             normalize=normalize,
@@ -601,6 +602,8 @@ def select_vector_field_function(
     if vector_field_mode == "cluster":
         return partial(
             estimate_vector_field_cluster,
+            points=points,
+            normals=normals,
             k=k,
             sigma=sigma,
             normalize=normalize,

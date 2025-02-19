@@ -40,3 +40,5 @@ dataset:
   k: 20
   sigma: 1.0
   chunk_threshold:  30
+  # logging settings
+  log_camera_idxs: [0]

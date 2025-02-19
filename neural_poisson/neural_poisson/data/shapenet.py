@@ -1,4 +1,5 @@
 import logging
+import random
 
 import lightning as L
 from torch.utils.data import DataLoader, Dataset
@@ -6,7 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 from neural_poisson.data.prepare import (
     extract_points_data,
     load_mesh,
-    select_random_camera,
     select_random_points,
     select_random_points_and_normals,
     select_vector_field_function,
@@ -84,25 +84,16 @@ class ShapeNetCoreDataset(Dataset):
         k: int = 20,
         sigma: float = 1.0,
         chunk_threshold: float = 30,
+        # logging settings
+        log_camera_idxs: list[int] = [0],
     ):
         log.info(f"==> initializing dataset <{self}> ...")
-        # store settings
         self.batch_size = batch_size
         self.epoch_size = epoch_size
         self.segments = segments
         self.image_size = image_size
         self.resolution = resolution
-
-        # prepare the vector field estimation function
-        log.info(f"\t==> prepare {vector_field_mode} vector field function ...")
-        self.vector_fn = select_vector_field_function(
-            vector_field_mode=vector_field_mode,
-            normalize=normalize,
-            chunk_size=chunk_size,
-            k=k,
-            sigma=sigma,
-            threshold=chunk_threshold,
-        )
+        self.log_camera_idxs = log_camera_idxs
 
         log.info(f"\t==> loading mesh from {path} ...")
         self.mesh = load_mesh(path, device=device)
@@ -116,6 +107,9 @@ class ShapeNetCoreDataset(Dataset):
             mesh=self.mesh,
             image_size=image_size,
             fill_depth=fill_depth,
+            empty_points_per_ray=empty_points_per_ray,
+            close_points_per_ray=close_points_per_ray,
+            close_points_surface_threshold=close_points_surface_threshold,
         )
         self.indicator_maps = data["indicator_maps"]
         self.normal_maps = data["normal_maps"]
@@ -136,9 +130,29 @@ class ShapeNetCoreDataset(Dataset):
         self.points_empty = points_empty
         self.normals_surface = normals
 
+        # prepare the vector field estimation function
+        log.info(f"\t==> prepare {vector_field_mode} vector field function ...")
+        self.vector_fn = select_vector_field_function(
+            points=self.points_surface,
+            normals=self.normals_surface,
+            vector_field_mode=vector_field_mode,
+            normalize=normalize,
+            chunk_size=chunk_size,
+            k=k,
+            sigma=sigma,
+            threshold=chunk_threshold,
+        )
+
         log.info("\t==> evaluate the vector field ...")
-        self.vectors_surface = self.vector_fn(points_surface, normals, points_surface)
-        self.vectors_close = self.vector_fn(points_surface, normals, points_close)
+        self.vectors_surface = self.vector_fn(query=points_surface)
+        self.vectors_close = self.vector_fn(query=points_close)
+
+        log.info("\t==> evaluate the camera vector maps ...")
+        self.vector_maps = {}
+        for idx in self.log_camera_idxs:
+            point_map = self.point_maps[idx]
+            vectors = self.vector_fn(query=point_map.reshape(-1, 3))
+            self.vector_maps[idx] = vectors.reshape(point_map.shape)
 
     ################################################################################
     # Usefull Properties
@@ -183,7 +197,7 @@ class ShapeNetCoreDataset(Dataset):
 
     def __getitem__(self, idx: int):
         # extract the current camera for debuging
-        camera, camera_idx = select_random_camera(self.cameras)
+        camera_idx = random.choice(self.log_camera_idxs)
 
         # sample the points for training
         points_surface, vectors_surface = select_random_points_and_normals(
@@ -211,12 +225,13 @@ class ShapeNetCoreDataset(Dataset):
             "vectors_close": vectors_close,
             # camera information
             "camera_idx": camera_idx,
-            "camera": camera,
+            "camera": self.cameras[camera_idx],
             # images from the camera
             "mask": self.masks[camera_idx],
             "indicator_map": self.indicator_maps[camera_idx],
             "normal_map": self.normal_maps[camera_idx],
             "point_map": self.point_maps[camera_idx],
+            "vector_map": self.vector_maps[camera_idx],
             # mesh information
             "mesh": self.mesh,
         }
