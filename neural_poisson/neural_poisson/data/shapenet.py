@@ -70,6 +70,7 @@ class ShapeNetCoreDataset(Dataset):
         batch_size: int = 100_000,
         epoch_size: int = 100,
         device: str = "cuda",
+        use_full_batch: bool = False,  # overrides the batch_size
         # subsampling settings
         resolution: float = 0.01,
         empty_space_max_ratio: float = -1.0,  # (0.0, inf)
@@ -95,13 +96,13 @@ class ShapeNetCoreDataset(Dataset):
         self.resolution = resolution
         self.log_camera_idxs = log_camera_idxs
 
-        log.info(f"\t==> loading mesh from {path} ...")
+        log.info(f"\t-> loading mesh from {path} ...")
         self.mesh = load_mesh(path, device=device)
 
-        log.info(f"\t==> loading {segments**2} cameras ...")
+        log.info(f"\t-> loading {segments**2} cameras ...")
         self.cameras = uniform_sphere_cameras(segments=segments, device=device)
 
-        log.info("\t==> extract the surface data ...")
+        log.info("\t-> extract the surface data ...")
         data = extract_points_data(
             cameras=self.cameras,
             mesh=self.mesh,
@@ -116,7 +117,7 @@ class ShapeNetCoreDataset(Dataset):
         self.point_maps = data["point_maps"]
         self.masks = data["masks"]
 
-        log.info("\t==> subsample the data with a resolution ...")
+        log.info("\t-> subsample the data with a resolution ...")
         points_surface, points_close, points_empty, normals = subsample_dataset_points(
             points_surface=data["points_surface"],
             points_empty=data["points_empty"],
@@ -129,9 +130,16 @@ class ShapeNetCoreDataset(Dataset):
         self.points_close = points_close
         self.points_empty = points_empty
         self.normals_surface = normals
+        log.info(f"\t-> extract {self.num_surface_points} surface points ...")
+        log.info(f"\t-> extract {self.num_close_points} close points ...")
+        log.info(f"\t-> extract {self.num_empty_points} empty points ...")
+
+        if use_full_batch:
+            log.info(f"\t-> set batch size to {self.num_surface_points} ...")
+            self.batch_size = self.num_surface_points
 
         # prepare the vector field estimation function
-        log.info(f"\t==> prepare {vector_field_mode} vector field function ...")
+        log.info(f"\t-> prepare {vector_field_mode} vector field function ...")
         self.vector_fn = select_vector_field_function(
             points=self.points_surface,
             normals=self.normals_surface,
@@ -143,11 +151,11 @@ class ShapeNetCoreDataset(Dataset):
             threshold=chunk_threshold,
         )
 
-        log.info("\t==> evaluate the vector field ...")
+        log.info("\t-> evaluate the vector field ...")
         self.vectors_surface = self.vector_fn(query=points_surface)
         self.vectors_close = self.vector_fn(query=points_close)
 
-        log.info("\t==> evaluate the camera vector maps ...")
+        log.info("\t-> evaluate the camera vector maps ...")
         self.vector_maps = {}
         for idx in self.log_camera_idxs:
             point_map = self.point_maps[idx]

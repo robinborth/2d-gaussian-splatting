@@ -22,11 +22,12 @@ dataset:
   path: ${data.data_dir}/models/model_normalized.obj
   image_size: 256
   segments: 10
-  fill_depth: zfar  # "zfar", "max", "max(d)"
+  fill_depth: max2  # "zfar", "max", "max(d)"
   # training settings
   batch_size: ${data.batch_size}
   epoch_size: ${data.epoch_size}
   device: ${device}
+  use_full_batch: False
   # subsampling settings
   resolution: 0.002
   # empty space sampling
@@ -41,4 +42,4 @@ dataset:
   sigma: 1.0
   chunk_threshold:  30
   # logging settings
-  log_camera_idxs: [0]
+  log_camera_idxs: [6]

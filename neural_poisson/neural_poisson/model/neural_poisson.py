@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import wandb
 from lightning.pytorch.utilities import grad_norm
-from pytorch3d.ops import marching_cubes
+from pytorch3d.ops.marching_cubes import marching_cubes
 
 
 class NeuralPoisson(L.LightningModule):
@@ -88,9 +88,8 @@ class NeuralPoisson(L.LightningModule):
         elif self.hparams["activation"] == "sigmoid":
             x = torch.sigmoid(x)  # [0, 1]
 
-        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
-        x += self.X_offset
-        return x
+        # # transform into the required range : [0, 1] <-> [-0.5, 0.5]
+        return x + self.X_offset
 
     def model_step(self, batch: dict):
         # extract the batch information
@@ -218,15 +217,22 @@ class NeuralPoisson(L.LightningModule):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map = self.forward(points=point_map)
-        dX_point_map = self.compute_gradient(x_point_map, point_map)
+
         # log the images
         name = f"Image-{batch['camera_idx']:03} ({mode})"
         img_X = wandb.Image(x_point_map.detach().cpu().numpy() - self.X_offset)
-        img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
-        img_N = wandb.Image(batch["normal_map"].detach().cpu().numpy())
+        img_X_gt = wandb.Image(batch["indicator_map"].detach().cpu().numpy())
         self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
-        self.logger.log_image(f"{name}/gradient", [img_dX])  # type: ignore
-        self.logger.log_image(f"{name}/normal", [img_N])  # type: ignore
+        self.logger.log_image(f"{name}/indicator_gt", [img_X_gt])  # type: ignore
+
+        # compute the normal and vector maps
+        dX_point_map = self.compute_gradient(x_point_map, point_map)
+        img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
+        img_dX_gt = wandb.Image(batch["vector_map"].detach().cpu().numpy())
+        img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
+        self.logger.log_image(f"{name}/vector", [img_dX])  # type: ignore
+        self.logger.log_image(f"{name}/vector_gt", [img_dX_gt])  # type: ignore
+        self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
 
     def logging_optimizer(self, mode: str = "train"):
         # extreact the information from the training
@@ -248,8 +254,8 @@ class NeuralPoisson(L.LightningModule):
         self.logger.experiment.log({"Learning Rate Modifier": histogram})  # type: ignore
 
     def on_before_optimizer_step(self, optimizer):
-        norms = grad_norm(self.encoder, norm_type=2)
-        self.log_dict(norms)
+        # norms = grad_norm(self.encoder, norm_type=2)
+        # self.log_dict(norms)
 
         # log the wandb gradients as histograms
         histograms = {}
@@ -270,9 +276,10 @@ class NeuralPoisson(L.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         """Perform training step."""
         output = self.model_step(batch)
-        self.logging_images(batch, output, "train")
-        self.logging_optimizer("train")
         self.logging_metrics(batch, output, "train")
+        if batch_idx == 0:
+            self.logging_images(batch, output, "train")
+            self.logging_optimizer("train")
         return output["total_loss"]
 
     def validation_step(self, batch: dict, batch_idx: int):
@@ -282,10 +289,10 @@ class NeuralPoisson(L.LightningModule):
         self.logging_metrics(batch, output, "val")
         return output["total_loss"]
 
-    def to_mesh(self) -> o3d.geometry.TriangleMesh:
+    def to_mesh(self, voxel_size: int | None = None) -> o3d.geometry.TriangleMesh:
         # prepare the evaluation
         self.eval()
-        N = self.hparams["voxel_size"]
+        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
         min_val, max_val = self.hparams["domain"]
 
         # fetch the point on the grid lattice
@@ -294,20 +301,22 @@ class NeuralPoisson(L.LightningModule):
         grid = torch.stack((xs.ravel(), ys.ravel(), zs.ravel())).reshape(-1, 3)
 
         # evaluate the indicator function on the grid structure
-        X = []
+        sdfs = []
         for points in torch.split(grid, self.hparams["chunk_size"]):
-            points = points.to(self.device)
-            x = self.forward(points)
-            X.append(x)
-        X_grid = torch.cat(X).reshape(N, N, N).detach().cpu().numpy()
+            x = self.forward(points.to(self.device))
+            # convert indicator to "sdf" value, where negative is inside
+            sdfs.append(-x.detach().cpu())
+        sdf_grid = torch.cat(sdfs).reshape(N, N, N)
 
-        # perform marching cubes (slow)
-        verts, faces, _, _ = marching_cubes(X_grid, level=self.isolevel)
-        # verts = verts * ((max_val - min_val) / resolution) + min_val
+        # perform marching cubes
+        verts, faces = marching_cubes(sdf_grid[None], isolevel=self.isolevel)
+        # from batched to not batched
+        verts = verts[0]
+        faces = faces[0]
 
         # merge into open3d mesh
         mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(verts)
-        mesh.triangles = o3d.utility.Vector3iVector(faces)
+        mesh.vertices = o3d.utility.Vector3dVector(verts.cpu().numpy())
+        mesh.triangles = o3d.utility.Vector3iVector(faces.cpu().numpy())
 
         return mesh

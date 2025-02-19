@@ -45,7 +45,7 @@ check_loss_empty_space:
 
 check_loss_wo_gradient:
 	python neural_poisson/train.py \
-	data=debug \
+	data.dataset.batch_size=10000 \
 	logger.group=check_loss \
 	logger.tags=[check_loss] \
 	logger.name=check_loss_wo_gradient \
@@ -53,7 +53,8 @@ check_loss_wo_gradient:
 	model.lambda_gradient=0.0 \
 	model.lambda_surface=1.0 \
 	model.lambda_empty_space=1.0 \
-
+	trainer.max_epochs=300 \
+	model.optimizer.lr=1e-04 \
 
 check_loss_full:
 	python neural_poisson/train.py \
