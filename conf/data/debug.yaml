@@ -1,0 +1,14 @@
+# @package data
+
+defaults:
+  - shapenet
+  - _self_
+
+epoch_size: 10
+dataset:
+  segments: 4
+  resolution: 0.01
+  empty_points_per_ray: 1
+  close_points_per_ray: 1
+  vector_field_mode: k_nearest_neighbors
+  k: 10

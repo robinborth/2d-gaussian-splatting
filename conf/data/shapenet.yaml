@@ -22,6 +22,7 @@ dataset:
   path: ${data.data_dir}/models/model_normalized.obj
   image_size: 256
   segments: 10
+  fill_depth: zfar  # "zfar", "max", "max(d)"
   # training settings
   batch_size: ${data.batch_size}
   epoch_size: ${data.epoch_size}

@@ -2,50 +2,69 @@
 # Optimization 
 ########################################################################
 
-scan105:
-	python train.py \
-		-s /home/borth/2d-gaussian-splatting/data/DTU/scan105 \
-		-m /home/borth/2d-gaussian-splatting/output/debug \
-		-r 2 \
-		--depth_ratio 1 \
-		--lambda_normal 0.05 \
-		--lambda_dist 1000
-
-train:
-	python train.py \
-	scan_id=24 \
-	mesh.voxel_size=-1 \
-	mesh.sdf_trunc=-1 \
-	mesh.depth_trunc=-1 \
-	mesh.resolution=1024 \
-
-debug:
-	python train.py \
-	optimization.iterations=100 \
-	test_iterations=[100] \
-	save_iterations=[100] \
-	mesh.fuse_cull=False \
-	eval.mesh_name=fuse_cull.ply \
-
-eval:
-	python scripts/eval_dtu/eval_old.py \
-		--data /home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105/train/ours_30000/fuse_cull.ply \
-		--scan 105 \
-		--mode mesh \
-		--dataset_dir /home/borth/2d-gaussian-splatting/data/Offical_DTU_Dataset \
-		--vis_out_dir /home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105
-
-eval1:
-	python scripts/eval_dtu/eval.py \
-		eval.data=/home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105/train/ours_30000/fuse_cull.ply \
-		eval.scan=105 \
-		eval.mode=mesh \
-		eval.dataset_dir=/home/borth/2d-gaussian-splatting/data/Offical_DTU_Dataset \
 
 ########################################################################
 # Mesh Extraction
 ########################################################################
 
+.PHONY: check_loss check_loss_gradient check_loss_surface check_loss_empty_space check_loss_wo_gradient check_loss_full
+check_loss: check_loss_gradient check_loss_surface check_loss_empty_space check_loss_wo_gradient check_loss_full
+
+check_loss_gradient:
+	python neural_poisson/train.py \
+	data=debug \
+	logger.group=check_loss \
+	logger.tags=[check_loss] \
+	logger.name=check_loss_gradient \
+	task_name=check_loss_gradient \
+	model.lambda_gradient=1.0 \
+	model.lambda_surface=0.0 \
+	model.lambda_empty_space=0.0 \
+
+check_loss_surface:
+	python neural_poisson/train.py \
+	data=debug \
+	logger.group=check_loss \
+	logger.tags=[check_loss] \
+	logger.name=check_loss_surface \
+	task_name=check_loss_surface \
+	model.lambda_gradient=0.0 \
+	model.lambda_surface=1.0 \
+	model.lambda_empty_space=0.0 \
+
+check_loss_empty_space:
+	python neural_poisson/train.py \
+	data=debug \
+	logger.group=check_loss \
+	logger.tags=[check_loss] \
+	logger.name=check_loss_empty_space \
+	task_name=check_loss_empty_space \
+	model.lambda_gradient=0.0 \
+	model.lambda_surface=0.0 \
+	model.lambda_empty_space=1.0 \
+
+check_loss_wo_gradient:
+	python neural_poisson/train.py \
+	data=debug \
+	logger.group=check_loss \
+	logger.tags=[check_loss] \
+	logger.name=check_loss_wo_gradient \
+	task_name=check_loss_wo_gradient \
+	model.lambda_gradient=0.0 \
+	model.lambda_surface=1.0 \
+	model.lambda_empty_space=1.0 \
+
+
+check_loss_full:
+	python neural_poisson/train.py \
+	data=debug \
+	logger.group=check_loss \
+	logger.tags=[check_loss] \
+	logger.name=check_loss_full \
+	task_name=check_loss_full \
+	model.lambda_gradient=1.0 \
+	model.lambda_surface=1.0 \
+	model.lambda_empty_space=1.0 \
 
 ########################################################################
 # Evaluation

@@ -1,0 +1,55 @@
+########################################################################
+# Optimization 
+########################################################################
+
+scan105:
+	python train.py \
+		-s /home/borth/2d-gaussian-splatting/data/DTU/scan105 \
+		-m /home/borth/2d-gaussian-splatting/output/debug \
+		-r 2 \
+		--depth_ratio 1 \
+		--lambda_normal 0.05 \
+		--lambda_dist 1000
+
+train1:
+	python train.py \
+	scan_id=24 \
+	mesh.voxel_size=-1 \
+	mesh.sdf_trunc=-1 \
+	mesh.depth_trunc=-1 \
+	mesh.resolution=1024 \
+
+debug:
+	python train.py \
+	optimization.iterations=100 \
+	test_iterations=[100] \
+	save_iterations=[100] \
+	mesh.fuse_cull=False \
+	eval.mesh_name=fuse_cull.ply \
+
+eval:
+	python scripts/eval_dtu/eval_old.py \
+		--data /home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105/train/ours_30000/fuse_cull.ply \
+		--scan 105 \
+		--mode mesh \
+		--dataset_dir /home/borth/2d-gaussian-splatting/data/Offical_DTU_Dataset \
+		--vis_out_dir /home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105
+
+eval1:
+	python scripts/eval_dtu/eval.py \
+		eval.data=/home/borth/2d-gaussian-splatting/logs/2025-02-13/scan105/train/ours_30000/fuse_cull.ply \
+		eval.scan=105 \
+		eval.mode=mesh \
+		eval.dataset_dir=/home/borth/2d-gaussian-splatting/data/Offical_DTU_Dataset \
+
+########################################################################
+# Mesh Extraction
+########################################################################
+
+
+train:
+	python neural_poisson/train.py
+
+########################################################################
+# Evaluation
+########################################################################

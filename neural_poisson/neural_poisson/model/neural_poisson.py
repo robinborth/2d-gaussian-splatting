@@ -20,6 +20,9 @@ class NeuralPoisson(L.LightningModule):
         lambda_empty_space: float = 1.0,
         # indicator settings
         indicator_function: str = "default",  # "default", "center"
+        activation: str = "sin",  # sin, sigmoid
+        # logging
+        log_camera_idxs: list[int] = [0],
         # marching cubes settings
         resolution: int = 256,
         domain: tuple[float, float] = (-1.0, 1.0),
@@ -31,6 +34,10 @@ class NeuralPoisson(L.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters(logger=False)
+
+        # check for valid values
+        assert activation in ["sin", "sigmoid"]
+        assert indicator_function in ["default", "center"]
 
         # for default: [0,1]; for center: [-0.5, 0.5]
         self.X_offset = 0.0
@@ -74,7 +81,16 @@ class NeuralPoisson(L.LightningModule):
         """Evaluates the indicator function for the given points."""
         x = self.encoder(points)  # the logits of the encoder of dim (P, 1)
         x = x.squeeze(-1)  # (P,)
-        return torch.sigmoid(x) + self.X_offset  # transforms into indicator function
+
+        # transforms into indicator function
+        if self.hparams["activation"] == "sin":
+            x = (torch.sin(x) + 1) / 2  # [0, 1]
+        elif self.hparams["activation"] == "sigmoid":
+            x = torch.sigmoid(x)  # [0, 1]
+
+        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
+        x += self.X_offset
+        return x
 
     def model_step(self, batch: dict):
         # extract the batch information
@@ -195,13 +211,17 @@ class NeuralPoisson(L.LightningModule):
         self.log_dict(unified_output, prog_bar=False)
 
     def logging_images(self, batch: dict, output: dict, mode: str = "train"):
+        # only log if we want to monitor the camera
+        if batch["camera_idx"] not in self.hparams["log_camera_idxs"]:
+            return
+
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map = self.forward(points=point_map)
         dX_point_map = self.compute_gradient(x_point_map, point_map)
         # log the images
         name = f"Image-{batch['camera_idx']:03} ({mode})"
-        img_X = wandb.Image(x_point_map.detach().cpu().numpy())
+        img_X = wandb.Image(x_point_map.detach().cpu().numpy() - self.X_offset)
         img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
         img_N = wandb.Image(batch["normal_map"].detach().cpu().numpy())
         self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
@@ -225,7 +245,7 @@ class NeuralPoisson(L.LightningModule):
         v_hat_t = state["exp_avg_sq"] / (1 - params["betas"][1] ** state["step"])
         lr_modifier = m_hat_t / (torch.sqrt(v_hat_t) + params["eps"])
         histogram = wandb.Histogram(lr_modifier.detach().cpu())
-        self.logger.experiment.log({"Learning Rate Modifier": histogram})
+        self.logger.experiment.log({"Learning Rate Modifier": histogram})  # type: ignore
 
     def on_before_optimizer_step(self, optimizer):
         norms = grad_norm(self.encoder, norm_type=2)
@@ -250,8 +270,7 @@ class NeuralPoisson(L.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         """Perform training step."""
         output = self.model_step(batch)
-        if batch_idx == 0:
-            self.logging_images(batch, output, "train")
+        self.logging_images(batch, output, "train")
         self.logging_optimizer("train")
         self.logging_metrics(batch, output, "train")
         return output["total_loss"]
@@ -259,8 +278,7 @@ class NeuralPoisson(L.LightningModule):
     def validation_step(self, batch: dict, batch_idx: int):
         """Perform validation step."""
         output = self.model_step(batch)
-        if batch_idx == 0:
-            self.logging_images(batch, output, "val")
+        self.logging_images(batch, output, "val")
         self.logging_metrics(batch, output, "val")
         return output["total_loss"]
 

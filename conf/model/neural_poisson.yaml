@@ -14,6 +14,10 @@ lambda_empty_space: 100.0
 
 # indicator settings
 indicator_function: center  # default, center
+activation: sigmoid  # sin, sigmoid
+
+# logging
+log_camera_idxs: [6]
 
 # marching cubes
 voxel_size: 256

@@ -1,8 +1,10 @@
+import random
 from functools import partial
 
 import numpy as np
 import open3d as o3d
 import torch
+from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.renderer import (
     CamerasBase,
     FoVPerspectiveCameras,
@@ -13,7 +15,7 @@ from pytorch3d.renderer import (
 from pytorch3d.structures import Meshes
 
 ################################################################################
-# Camera Utilities
+# Utilities
 ################################################################################
 
 
@@ -39,6 +41,34 @@ def get_points_camera_space_attributes(mesh: Meshes, camera: CamerasBase):
     return v_camera[None]  # (B,V,D)
 
 
+def select_random_points_and_normals(
+    points: torch.Tensor,
+    normals: torch.Tensor,
+    max_samples: int,
+):
+    assert points.shape == normals.shape
+    idx = torch.randperm(len(points))[:max_samples]
+    return points[idx], normals[idx]
+
+
+def select_random_points(points: torch.Tensor, max_samples: int):
+    return points[torch.randperm(len(points))[:max_samples]]
+
+
+def select_random_camera(cameras: list):
+    idx = random.choice(range(len(cameras)))
+    return cameras[idx], idx
+
+
+def load_mesh(path: str, device: str = "cuda"):
+    return load_objs_as_meshes([path], device=device)
+
+
+################################################################################
+# Surface Processing
+################################################################################
+
+
 def depth_map_to_points_camera_space(
     depth: torch.Tensor,
     fx: float,
@@ -62,7 +92,6 @@ def depth_map_to_points_camera_space(
         torch.arange(W, device=depth.device),
         indexing="ij",
     )
-
     # compute normalized pixel coordinates
     x = (x - cx) / fx
     y = (y - cy) / fy
@@ -80,7 +109,17 @@ def depth_to_points(
     mask: torch.Tensor,
     camera: CamerasBase,
     padding: bool = False,
+    fill_depth: str = "zfar",  # zfar, max, max(d)
 ):
+    # prepare the correct fill value
+    assert fill_depth in ["zfar", "max", "max2", "max5", "max10"]
+    fill_value = camera.zfar
+    if fill_depth == "max":
+        fill_value = depth.max()
+    elif fill_depth.startswith("max"):
+        multiplyer = int(fill_depth.split("max")[-1])
+        fill_value = depth.max() * multiplyer
+
     # extract the shape and make sure that it follow the format
     _, H, W, _ = depth.shape
     assert H == W
@@ -88,21 +127,37 @@ def depth_to_points(
     cx, cy = compute_half_pixel_princial_point(image_size=W)
     # the point cloud has dim (B, H+2, W+2, 3)
     depth_map = depth[..., 0]
-    depth_map[mask] = camera.zfar
+    depth_map[mask] = fill_value
+
     return depth_map_to_points_camera_space(depth_map, fx, fy, cx, cy, padding)
 
 
-def depth_to_normals(depth: torch.Tensor, mask: torch.Tensor, camera: CamerasBase):
-    pcd = depth_to_points(depth=depth, mask=mask, camera=camera, padding=True)
+def depth_to_normals(
+    depth: torch.Tensor,
+    mask: torch.Tensor,
+    camera: CamerasBase,
+    fill_depth: str = "zfar",
+):
+    pcd = depth_to_points(
+        depth=depth,
+        mask=mask,
+        camera=camera,
+        padding=True,
+        fill_depth=fill_depth,
+    )
     N_x = pcd[:, :, 2:, :] - pcd[:, :, :-2, :]
     N_y = pcd[:, 2:, :, :] - pcd[:, :-2, :, :]
-    normal = torch.linalg.cross(N_x[:, 1:-1, :, :], N_y[:, :, 1:-1, :])
+    normal = torch.linalg.cross(N_y[:, :, 1:-1, :], N_x[:, 1:-1, :, :])
     normal /= torch.linalg.vector_norm(normal, dim=-1)[..., None]
-    # normal[..., 1] *= -1.0  # flip that?
     return normal
 
 
-def extract_surface_data(camera, mesh, image_size: int):
+def extract_surface_data(
+    camera: CamerasBase,
+    mesh: Meshes,
+    image_size: int,
+    fill_depth="zfar",
+):
     attributes = get_depth_camera_space_attributes(mesh=mesh, camera=camera)
     depth_map, mask = rasterize_attributes(
         mesh=mesh,
@@ -110,8 +165,18 @@ def extract_surface_data(camera, mesh, image_size: int):
         attributes=attributes,
         image_size=image_size,
     )
-    normal_map = depth_to_normals(depth=depth_map, mask=mask, camera=camera)
-    point_map = depth_to_points(depth=depth_map, mask=mask, camera=camera)
+    normal_map = depth_to_normals(
+        depth=depth_map,
+        mask=mask,
+        camera=camera,
+        fill_depth=fill_depth,
+    )
+    point_map = depth_to_points(
+        depth=depth_map,
+        mask=mask,
+        camera=camera,
+        fill_depth=fill_depth,
+    )
 
     # remove the batch_size
     normal_map = normal_map[0]
@@ -128,20 +193,91 @@ def extract_surface_data(camera, mesh, image_size: int):
     normals = normal_map[~mask]
     points = point_map[~mask]
 
-    # P = camera.get_world_to_view_transform()
-    # normals = P.inverse().transform_normals(normal_map[~mask])
-    # points = P.inverse().transform_points(point_map[~mask])
+    # compute the indicator map
+    indicator_map = torch.ones_like(mask)
+    indicator_map[mask] = 0.0
 
     return {
-        "depth_map": depth_map,
-        "normal_map": normal_map,
-        "point_map": point_map,
-        # "normal_map": normal_map[0],
-        # "point_map": point_map[0],
         "mask": mask,
+        "indicator_map": indicator_map,
+        "normal_map": normal_map,  # in world space
+        "point_map": point_map,  # in world space
         "normals": normals,
         "points": points,
     }
+
+
+def extract_points_data(
+    # dataset settings
+    cameras: CamerasBase,
+    mesh: Meshes,
+    image_size: int,
+    fill_depth="zfar",
+    # empty space sampling
+    empty_points_per_ray: int = 4,
+    close_points_per_ray: int = 2,
+    close_points_surface_threshold: float = 0.01,
+):
+    normals = []
+    points_surface = []
+    points_close = []
+    points_empty = []
+    indicator_maps = []
+    normal_maps = []
+    point_maps = []
+    masks = []
+
+    for camera in cameras:
+        # extract the surface data
+        data = extract_surface_data(
+            camera=camera,
+            mesh=mesh,
+            image_size=image_size,
+            fill_depth=fill_depth,
+        )
+        indicator_maps.append(data["indicator_map"])
+        normal_maps.append(data["normal_map"])
+        point_maps.append(data["point_map"])
+        masks.append(data["mask"])
+
+        # extract the points data
+        normals.append(data["normals"])
+        points_surface.append(data["points"])
+
+        # extract the close surface points
+        _points = sample_empty_space_points(
+            points=data["points"],
+            camera=camera,
+            samples=close_points_per_ray,
+            surface_threshold=close_points_surface_threshold,
+        )
+        points_close.append(_points)
+
+        # extract the empty space points
+        points = sample_empty_space_points(
+            points=data["points"],
+            camera=camera,
+            samples=empty_points_per_ray,
+            surface_threshold=1.0,
+        )
+        points_empty.append(points)
+
+    # merge the information together
+    return {
+        "points_surface": torch.cat(points_surface),  # (P, 3)
+        "points_empty": torch.cat(points_empty),  # (P, 3)
+        "points_close": torch.cat(points_close),  # (P, 3)
+        "normals": torch.cat(normals),  # (P, 3)
+        "indicator_maps": indicator_maps,  # (B, H, W, 3)
+        "normal_maps": normal_maps,  # (B, H, W, 3)
+        "point_maps": point_maps,  # (B, H, W, 3)
+        "masks": masks,  # (B, H, W, 3)
+    }
+
+
+################################################################################
+# Camera Utilties
+################################################################################
 
 
 def uniform_sphere_cameras(dist: float = 1.0, segments: int = 10, device: str = "cuda"):
@@ -225,17 +361,6 @@ def rasterize_attributes(
 ################################################################################
 
 
-def assign_unique_voxel_id(points: torch.Tensor, resolution: float = 0.1):
-    ids = torch.floor((points * (1 / resolution))).long()
-    ids -= ids.min(dim=0).values
-    # compute unique voxel ids
-    f0 = 1
-    f1 = ids[:, 0].max()
-    f2 = ids[:, 0].max() * ids[:, 1].max()
-    unique_ids = f0 * ids[:, 0] + f1 * ids[:, 1] + f2 * ids[:, 2]
-    return unique_ids
-
-
 def sample_empty_space_points(
     points: torch.Tensor,
     camera: CamerasBase,
@@ -268,6 +393,37 @@ def subsample_points(points: torch.Tensor, resolution: float = 0.01, normals=Non
     # extract the normals if normals are provided as input
     normals = torch.tensor(np.asarray(pcd.normals)).to(normals)
     return points, normals
+
+
+def subsample_dataset_points(
+    points_surface: torch.Tensor,
+    points_empty: torch.Tensor,
+    points_close: torch.Tensor,
+    normals: torch.Tensor,
+    # subsampling settings
+    resolution: float = 0.01,
+    empty_space_max_ratio: float = -1.0,
+    **kwargs,
+):
+    # subsample points to the desired resolution
+    points_surface, normals = subsample_points(
+        points=points_surface,
+        normals=normals,
+        resolution=resolution,
+    )
+    points_close = subsample_points(points=points_close, resolution=resolution)
+
+    # subsample empty points and ensure similar ratio
+    points_empty = subsample_points(points=points_empty, resolution=resolution)
+    if empty_space_max_ratio > 0:
+        surface_count = points_surface.shape[0] + points_close.shape[0]
+        max_empty_points = int(surface_count * empty_space_max_ratio)
+        max_empty_points = min(max_empty_points, points_empty.shape[0])
+        indices = torch.randperm(points_empty.shape[0])[:max_empty_points]
+        points_empty = points_empty[indices]
+
+    # return all the information
+    return points_surface, points_close, points_empty, normals
 
 
 ################################################################################
@@ -367,7 +523,8 @@ def estimate_vector_field_cluster(
         if normalize:
             vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
         vectors.append(vector)
-    return torch.cat(vectors)
+    # return the inverse of the normal as the vector field
+    return -torch.cat(vectors)
 
 
 def estimate_vector_field_k_nearest_neighbors(
@@ -394,7 +551,8 @@ def estimate_vector_field_k_nearest_neighbors(
         if normalize:
             vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
         vectors.append(vector)
-    return torch.cat(vectors)
+    # return the inverse of the normal as the vector field
+    return -torch.cat(vectors)
 
 
 def estimate_vector_field_nearest_neighbor(
@@ -414,7 +572,8 @@ def estimate_vector_field_nearest_neighbor(
         if normalize:
             vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
         vectors.append(vector)
-    return torch.cat(vectors)
+    # return the inverse of the normal as the vector field
+    return -torch.cat(vectors)
 
 
 def select_vector_field_function(
