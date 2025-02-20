@@ -6,4 +6,4 @@ scheduler:
   _target_: torch.optim.lr_scheduler.LinearLR
   total_iters: ${trainer.max_epochs} 
   start_factor: 1.0
-  end_factor: 1e-02
+  end_factor: 1e-01

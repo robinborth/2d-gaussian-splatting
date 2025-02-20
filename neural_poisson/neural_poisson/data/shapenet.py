@@ -1,8 +1,8 @@
 import logging
 import random
+import time
 
 import lightning as L
-import torch
 from torch.utils.data import DataLoader, Dataset
 
 from neural_poisson.data.prepare import (
@@ -97,7 +97,7 @@ class ShapeNetCoreDataset(Dataset):
         # logging settings
         log_camera_idxs: list[int] = [0],
     ):
-        log.info(f"==> initializing dataset <{self}> ...")
+        self.start_log(f"==> initializing dataset <{self}> ...")
         self.device = device
         self.segments = segments
         self.image_size = image_size
@@ -108,19 +108,22 @@ class ShapeNetCoreDataset(Dataset):
         self.empty_chunk_factor = empty_chunk_factor
         self.resolution = resolution
         self.log_camera_idxs = log_camera_idxs
+        self.fill_depth = fill_depth
 
-        log.info(f"\t-> loading mesh from {path} ...")
+        self.start_log(f"\t-> loading mesh from {path} ...")
         self.mesh = load_mesh(path, device=device)
+        self.finish_log()
 
-        log.info(f"\t-> loading {segments**2} cameras ...")
+        self.start_log(f"\t-> loading {segments**2} cameras ...")
         self.cameras = uniform_sphere_cameras(
             dist=dist,
             fov=fov,
             segments=segments,
             device=device,
         )
+        self.finish_log()
 
-        log.info("\t-> extract the surface data ...")
+        self.start_log("\t-> extract the surface data ...")
         data = extract_points_data(
             cameras=self.cameras,
             mesh=self.mesh,
@@ -135,8 +138,9 @@ class ShapeNetCoreDataset(Dataset):
         self.normal_maps = data["normal_maps"]
         self.point_maps = data["point_maps"]
         self.masks = data["masks"]
+        self.finish_log()
 
-        log.info("\t-> subsample the data with a resolution ...")
+        self.start_log("\t-> subsample the data with a resolution ...")
         points_surface, points_close, points_empty, normals = subsample_dataset_points(
             points_surface=data["points_surface"],
             points_empty=data["points_empty"],
@@ -152,16 +156,17 @@ class ShapeNetCoreDataset(Dataset):
         self.points_close = points_close
         self.points_empty = points_empty
         self.normals_surface = normals
-        log.info(f"\t-> extract {self.num_surface_points} surface points ...")
-        log.info(f"\t-> extract {self.num_close_points} close points ...")
-        log.info(f"\t-> extract {self.num_empty_points} empty points ...")
+        self.finish_log()
+        self.start_log(f"\t-> extract {self.num_surface_points} surface points ...")
+        self.start_log(f"\t-> extract {self.num_close_points} close points ...")
+        self.start_log(f"\t-> extract {self.num_empty_points} empty points ...")
 
         if use_full_chunk:
             log.info(f"\t-> set batch size to {self.num_surface_points} ...")
             self.chunk_size = self.num_surface_points
 
         # prepare the vector field estimation function
-        log.info(f"\t-> prepare {vector_field_mode} vector field function ...")
+        self.start_log(f"\t-> prepare {vector_field_mode} vector field function ...")
         self.vector_fn = select_vector_field_function(
             points=self.points_surface,
             normals=self.normals_surface,
@@ -172,20 +177,22 @@ class ShapeNetCoreDataset(Dataset):
             sigma=sigma,
             threshold=chunk_threshold,
         )
+        self.finish_log()
 
-        log.info("\t-> evaluate the vector field ...")
+        self.start_log("\t-> evaluate the vector field ...")
         self.vectors_surface = self.vector_fn(query=points_surface)
         self.vectors_close = self.vector_fn(query=points_close)
+        self.finish_log()
 
-        log.info("\t-> evaluate the camera vector maps ...")
+        self.start_log("\t-> evaluate the camera vector maps ...")
         self.vector_maps = {}
         for idx in self.log_camera_idxs:
             point_map = self.point_maps[idx]
             vectors = self.vector_fn(query=point_map.reshape(-1, 3))
             self.vector_maps[idx] = vectors.reshape(point_map.shape)
+        self.finish_log()
 
-        log.info("\t-> prepare the chunks ...")
-
+        self.start_log("\t-> prepare the chunks ...")
         self.chunks = {}
         points_surface_chunk, vectors_surface_chunk = compute_chunks(
             num_chunks=self.num_chunks,
@@ -207,6 +214,7 @@ class ShapeNetCoreDataset(Dataset):
         self.chunks["points_close"] = points_close_chunk
         self.chunks["vectors_close"] = vectors_close_chunk
         self.chunks["points_empty"] = points_empty_chunk
+        self.finish_log()
 
     ################################################################################
     # Usefull Properties
@@ -223,6 +231,14 @@ class ShapeNetCoreDataset(Dataset):
     @property
     def num_close_points(self):
         return self.points_close.shape[0]
+
+    def start_log(self, msg: str):
+        self.start_time = time.time()
+        log.info(msg)
+
+    def finish_log(self):
+        duration = (time.time() - self.start_time) * 1000
+        log.info(f"\t-> time taken {duration:.4f} ms")
 
     ################################################################################
     # Predefined Visualizations

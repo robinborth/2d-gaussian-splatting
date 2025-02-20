@@ -1,12 +1,15 @@
 import time
 
 import lightning as L
-import open3d as o3d
 import torch
 import torch.nn as nn
 import wandb
-from lightning.pytorch.utilities import grad_norm
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops.marching_cubes import marching_cubes
+from pytorch3d.structures import Meshes
+
+from neural_poisson.data.prepare import extract_surface_data
 
 
 class NeuralPoisson(L.LightningModule):
@@ -26,9 +29,13 @@ class NeuralPoisson(L.LightningModule):
         log_metrics: bool = True,
         log_images: bool = True,
         log_optimizer: bool = True,
+        log_mesh: bool = True,
         log_metrics_every_n_steps: int = 10,
         log_images_every_n_steps: int = 10,
         log_optimizer_every_n_steps: int = 10,
+        log_mesh_every_n_epochs: int = 10,
+        # metrics
+        num_points_chamfer: int = 100_000,
         # marching cubes settings
         resolution: int = 256,
         domain: tuple[float, float] = (-1.0, 1.0),
@@ -198,6 +205,13 @@ class NeuralPoisson(L.LightningModule):
         return output
 
     def check_logging(self, mode: str = "metrics", batch_idx: int = 0):
+        if mode == "mesh":
+            log_epochs = self.hparams[f"log_{mode}_every_n_epochs"]
+            return (
+                self.trainer.current_epoch % log_epochs == 0
+                and batch_idx == 0
+                and self.hparams[f"log_{mode}"]
+            )
         return (
             batch_idx % self.hparams[f"log_{mode}_every_n_steps"] == 0
             and self.hparams[f"log_{mode}"]
@@ -276,6 +290,37 @@ class NeuralPoisson(L.LightningModule):
         histogram = wandb.Histogram(lr_modifier.detach().cpu())
         self.logger.experiment.log({"Learning Rate Modifier": histogram})  # type: ignore
 
+    def logging_mesh(self, batch: dict, mode: str = "train"):
+        # compute the mesh (slow)
+        self.mesh = self.to_mesh()
+
+        # compute chamfer distance
+        chamfer_samples = self.hparams["num_points_chamfer"]
+        p1 = sample_points_from_meshes(self.mesh, chamfer_samples)
+        p2 = sample_points_from_meshes(batch["mesh"], chamfer_samples)
+        loss, _ = chamfer_distance(p1, p2)
+        self.log(f"Metrics ({mode})/chamfer", loss, prog_bar=False)
+
+        # log the mesh for the entire camera logs
+        dataset = self.trainer.datamodule.dataset  # type: ignore
+        for camera_idx in dataset.log_camera_idxs:
+            data = extract_surface_data(
+                camera=dataset.cameras[camera_idx],
+                mesh=self.mesh,
+                image_size=dataset.image_size,
+                fill_depth=dataset.fill_depth,
+            )
+            # log mesh images
+            name = f"Mesh-{batch['camera_idx']:03} ({mode})"
+            img_N = wandb.Image(data["normal_map"].detach().cpu().numpy())
+            img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
+            img_X = wandb.Image(data["indicator_map"].detach().cpu().numpy())
+            img_X_gt = wandb.Image(batch["indicator_map"].detach().cpu().numpy())
+            self.logger.log_image(f"{name}/normal", [img_N])  # type: ignore
+            self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
+            self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
+            self.logger.log_image(f"{name}/indicator_gt", [img_X_gt])  # type: ignore
+
     def on_before_optimizer_step(self, optimizer):
         log_steps = self.hparams["log_optimizer_every_n_steps"]
         batch_idx = self.trainer.global_step % log_steps
@@ -307,9 +352,11 @@ class NeuralPoisson(L.LightningModule):
             self.logging_images(batch, output, "train")
         if self.check_logging("optimizer", batch_idx):
             self.logging_optimizer("train")
+        if self.check_logging("mesh", batch_idx):
+            self.logging_mesh(batch, "train")
         return output["total_loss"]
 
-    def to_mesh(self, voxel_size: int | None = None) -> o3d.geometry.TriangleMesh:
+    def to_mesh(self, voxel_size: int | None = None):
         # prepare the evaluation
         self.eval()
         N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
@@ -328,15 +375,11 @@ class NeuralPoisson(L.LightningModule):
             sdfs.append(-x.detach().cpu())
         sdf_grid = torch.cat(sdfs).reshape(N, N, N)
 
+        # ensures that we have a valid isolevel and can extract a mesh
+        isolevel = self.isolevel
+        if isolevel > sdf_grid.max() or isolevel < sdf_grid.min():
+            isolevel = (sdf_grid.max().item() - sdf_grid.min().item()) / 2
+
         # perform marching cubes
-        verts, faces = marching_cubes(sdf_grid[None], isolevel=self.isolevel)
-        # from batched to not batched
-        verts = verts[0]
-        faces = faces[0]
-
-        # merge into open3d mesh
-        mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(verts.cpu().numpy())
-        mesh.triangles = o3d.utility.Vector3iVector(faces.cpu().numpy())
-
-        return mesh
+        verts, faces = marching_cubes(sdf_grid[None], isolevel=isolevel)
+        return Meshes(verts=verts, faces=faces).to(self.device)
