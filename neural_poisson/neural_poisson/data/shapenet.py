@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from neural_poisson.data.prepare import (
+    compute_chunks,
     extract_points_data,
     load_mesh,
     select_random_points,
@@ -70,12 +71,12 @@ class ShapeNetCoreDataset(Dataset):
         fill_depth: str = "zfar",
         # training settings
         device: str = "cuda",
-        epoch_size: int = 100,
-        batch_size: int = 100_000,
-        surface_batch_size_factor: float = 1.0,
-        close_batch_size_factor: float = 0.5,
-        empty_batch_size_factor: float = 0.5,
-        use_full_batch: bool = False,  # overrides the batch_size but not factor
+        num_chunks: int = 100,
+        chunk_size: int = 100_000,
+        surface_chunk_factor: float = 1.0,
+        close_chunk_factor: float = 0.5,
+        empty_chunk_factor: float = 0.5,
+        use_full_chunk: bool = False,  # overrides the chunk_size but not factor
         # subsampling settings
         resolution: float = 0.01,
         domain: tuple[float, float] = (-1.0, 1.0),
@@ -88,8 +89,8 @@ class ShapeNetCoreDataset(Dataset):
         close_points_surface_threshold: float = 0.01,
         # vector field settings: "nearest_neighbor", "k_nearest_neighbors", "cluster"
         vector_field_mode: str = "nearest_neighbor",
+        vector_field_chunk_size: int = 1_000,
         normalize: bool = True,
-        chunk_size: int = 1_000,
         k: int = 20,
         sigma: float = 1.0,
         chunk_threshold: float = 30,
@@ -98,13 +99,13 @@ class ShapeNetCoreDataset(Dataset):
     ):
         log.info(f"==> initializing dataset <{self}> ...")
         self.device = device
-        self.batch_size = batch_size
-        self.surface_batch_size_factor = surface_batch_size_factor
-        self.close_batch_size_factor = close_batch_size_factor
-        self.empty_batch_size_factor = empty_batch_size_factor
-        self.epoch_size = epoch_size
         self.segments = segments
         self.image_size = image_size
+        self.num_chunks = num_chunks
+        self.chunk_size = chunk_size
+        self.surface_chunk_factor = surface_chunk_factor
+        self.close_chunk_factor = close_chunk_factor
+        self.empty_chunk_factor = empty_chunk_factor
         self.resolution = resolution
         self.log_camera_idxs = log_camera_idxs
 
@@ -155,9 +156,9 @@ class ShapeNetCoreDataset(Dataset):
         log.info(f"\t-> extract {self.num_close_points} close points ...")
         log.info(f"\t-> extract {self.num_empty_points} empty points ...")
 
-        if use_full_batch:
+        if use_full_chunk:
             log.info(f"\t-> set batch size to {self.num_surface_points} ...")
-            self.batch_size = self.num_surface_points
+            self.chunk_size = self.num_surface_points
 
         # prepare the vector field estimation function
         log.info(f"\t-> prepare {vector_field_mode} vector field function ...")
@@ -165,8 +166,8 @@ class ShapeNetCoreDataset(Dataset):
             points=self.points_surface,
             normals=self.normals_surface,
             vector_field_mode=vector_field_mode,
+            chunk_size=vector_field_chunk_size,
             normalize=normalize,
-            chunk_size=chunk_size,
             k=k,
             sigma=sigma,
             threshold=chunk_threshold,
@@ -182,6 +183,30 @@ class ShapeNetCoreDataset(Dataset):
             point_map = self.point_maps[idx]
             vectors = self.vector_fn(query=point_map.reshape(-1, 3))
             self.vector_maps[idx] = vectors.reshape(point_map.shape)
+
+        log.info("\t-> prepare the chunks ...")
+
+        self.chunks = {}
+        points_surface_chunk, vectors_surface_chunk = compute_chunks(
+            num_chunks=self.num_chunks,
+            chunk_size=int(self.chunk_size * self.surface_chunk_factor),
+            values=[self.points_surface, self.vectors_surface],
+        )
+        points_close_chunk, vectors_close_chunk = compute_chunks(
+            num_chunks=self.num_chunks,
+            chunk_size=int(self.chunk_size * self.close_chunk_factor),
+            values=[self.points_close, self.vectors_close],
+        )
+        points_empty_chunk = compute_chunks(
+            num_chunks=self.num_chunks,
+            chunk_size=int(self.chunk_size * self.empty_chunk_factor),
+            values=[self.points_empty],
+        )
+        self.chunks["points_surface"] = points_surface_chunk
+        self.chunks["vectors_surface"] = vectors_surface_chunk
+        self.chunks["points_close"] = points_close_chunk
+        self.chunks["vectors_close"] = vectors_close_chunk
+        self.chunks["points_empty"] = points_empty_chunk
 
     ################################################################################
     # Usefull Properties
@@ -226,36 +251,19 @@ class ShapeNetCoreDataset(Dataset):
     ################################################################################
 
     def __len__(self):
-        return self.epoch_size  # TODO change this with a sampler
+        return self.num_chunks
 
     def __getitem__(self, idx: int):
         # extract the current camera for debuging
         camera_idx = random.choice(self.log_camera_idxs)
-
-        # sample the points for training
-        points_surface, vectors_surface = select_random_points(
-            points=self.points_surface,
-            normals=self.vectors_surface,
-            max_samples=int(self.batch_size * self.surface_batch_size_factor),
-        )
-        points_close, vectors_close = select_random_points(
-            points=self.points_close,
-            normals=self.vectors_close,
-            max_samples=int(self.batch_size * self.close_batch_size_factor),
-        )
-        points_empty = select_random_points(
-            points=self.points_empty,
-            max_samples=int(self.batch_size * self.empty_batch_size_factor),
-        )
-
         # prepare the batch information
         return {
             # point information (point+vector)
-            "points_surface": points_surface,
-            "points_close": points_close,
-            "points_empty": points_empty,
-            "vectors_surface": vectors_surface,
-            "vectors_close": vectors_close,
+            "points_surface": self.chunks["points_surface"][idx],
+            "points_close": self.chunks["points_surface"][idx],
+            "points_empty": self.chunks["points_surface"][idx],
+            "vectors_surface": self.chunks["points_surface"][idx],
+            "vectors_close": self.chunks["points_surface"][idx],
             # camera information
             "camera_idx": camera_idx,
             "camera": self.cameras[camera_idx],

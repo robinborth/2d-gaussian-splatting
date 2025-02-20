@@ -1,4 +1,7 @@
+import logging
+import math
 import random
+from collections import defaultdict
 from functools import partial
 
 import numpy as np
@@ -13,6 +16,8 @@ from pytorch3d.renderer import (
     look_at_view_transform,
 )
 from pytorch3d.structures import Meshes
+
+log = logging.getLogger()
 
 ################################################################################
 # Utilities
@@ -51,6 +56,37 @@ def select_random_points(
     assert points.shape == normals.shape
     idx = torch.randperm(len(points))[:max_samples]
     return points[idx], normals[idx]
+
+
+def compute_chunks(num_chunks: int, chunk_size: int, values: list[torch.Tensor]):
+    # compute how many permutations are needed
+    points_count = values[0].shape[0]
+    permutation_count = math.ceil((num_chunks * chunk_size) / points_count)
+
+    # check that we at least sample each data once
+    for value in values:
+        assert value.shape[0] == points_count
+        if int(num_chunks * chunk_size) < value.shape[0]:
+            log.warning("The total chunk size is smaller then the number of poitns!")
+
+    # one big list that fills the entire epoch
+    _permutations = []
+    for i in range(permutation_count):
+        _permutations.append(torch.randperm(points_count))
+    permutations = torch.cat(_permutations)
+
+    # compute the chunks for one epoch
+    _chunks = defaultdict(list)
+    for chunk_idx in range(num_chunks):
+        idx = permutations[chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size]
+        for i, value in enumerate(values):
+            _chunks[i].append(value[idx])
+
+    # pack the chunks to a list and if single values return
+    chunks = list(_chunks.values())
+    if len(chunks) == 1:
+        return chunks[0]
+    return chunks
 
 
 def load_mesh(path: str, device: str = "cuda"):

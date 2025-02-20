@@ -253,33 +253,33 @@ class NeuralPoisson(L.LightningModule):
         histogram = wandb.Histogram(lr_modifier.detach().cpu())
         self.logger.experiment.log({"Learning Rate Modifier": histogram})  # type: ignore
 
-    def on_before_optimizer_step(self, optimizer):
-        # norms = grad_norm(self.encoder, norm_type=2)
-        # self.log_dict(norms)
+    # def on_before_optimizer_step(self, optimizer):
+    #     # norms = grad_norm(self.encoder, norm_type=2)
+    #     # self.log_dict(norms)
 
-        # log the wandb gradients as histograms
-        histograms = {}
-        for name, p in self.encoder.named_parameters():
-            if p.grad is None:
-                continue
-            h = wandb.Histogram(p.grad.data.detach().cpu())
-            histograms[f"grad_histogram/{name}"] = h
-        self.logger.experiment.log(histograms)
+    #     # log the wandb gradients as histograms
+    #     histograms = {}
+    #     for name, p in self.encoder.named_parameters():
+    #         if p.grad is None:
+    #             continue
+    #         h = wandb.Histogram(p.grad.data.detach().cpu())
+    #         histograms[f"grad_histogram/{name}"] = h
+    #     self.logger.experiment.log(histograms)
 
-        # log the weights distribution of the layers
-        histograms = {}
-        for name, p in self.encoder.named_parameters():
-            h = wandb.Histogram(p.data.detach().cpu())
-            histograms[f"weights_histogram/{name}"] = h
-        self.logger.experiment.log(histograms)
+    #     # log the weights distribution of the layers
+    #     histograms = {}
+    #     for name, p in self.encoder.named_parameters():
+    #         h = wandb.Histogram(p.data.detach().cpu())
+    #         histograms[f"weights_histogram/{name}"] = h
+    #     self.logger.experiment.log(histograms)
 
     def training_step(self, batch: dict, batch_idx: int):
         """Perform training step."""
         output = self.model_step(batch)
-        self.logging_metrics(batch, output, "train")
-        if batch_idx == 0:
-            self.logging_images(batch, output, "train")
-            self.logging_optimizer("train")
+        # self.logging_metrics(batch, output, "train")
+        # if batch_idx == 0:
+        #     self.logging_images(batch, output, "train")
+        #     self.logging_optimizer("train")
         return output["total_loss"]
 
     def validation_step(self, batch: dict, batch_idx: int):

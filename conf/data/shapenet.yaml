@@ -6,7 +6,7 @@ shapenet_id: 1a04e3eab45ca15dd86060f189eb133
 data_dir: ${paths.data_dir}/ShapeNetCoreTiny/02691156/${data.shapenet_id}
 
 # training settings
-batch_size: 5_000
+batch_size: 10_000
 epoch_size: 100
 num_workers: 0
 pin_memory: False
@@ -27,12 +27,12 @@ dataset:
   fill_depth: max2  # "zfar", "max", "max(d)"
   # training settings
   device: ${device}
-  epoch_size: ${data.epoch_size}
-  batch_size: ${data.batch_size}
-  surface_batch_size_factor: 1.0
-  close_batch_size_factor: 0.5
-  empty_batch_size_factor: 0.5
-  use_full_batch: False
+  num_chunks: ${data.epoch_size}
+  chunk_size: ${data.batch_size}
+  surface_chunk_factor: 1.0
+  close_chunk_factor: 0.5
+  empty_chunk_factor: 0.5
+  use_full_chunk: False
   # subsampling settings
   resolution: 0.002
   domain: [-1.0, 1.0]
@@ -46,7 +46,7 @@ dataset:
   # vector field settings 
   vector_field_mode: k_nearest_neighbors  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
   normalize: True
-  chunk_size: 1_000
+  vector_field_chunk_size: 1_000
   k: 20
   sigma: 1.0
   chunk_threshold:  30
