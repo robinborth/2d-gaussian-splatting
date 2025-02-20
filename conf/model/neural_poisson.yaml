@@ -18,6 +18,12 @@ activation: sigmoid  # sin, sigmoid
 
 # logging
 log_camera_idxs: ${data.dataset.log_camera_idxs}
+log_metrics: True
+log_images: True
+log_optimizer: True
+log_metrics_every_n_steps: 10
+log_images_every_n_steps: ${data.epoch_size}
+log_optimizer_every_n_steps: ${data.epoch_size}
 
 # marching cubes
 voxel_size: 256

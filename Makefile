@@ -70,3 +70,26 @@ check_loss_full:
 ########################################################################
 # Evaluation
 ########################################################################
+
+train:
+	python neural_poisson/train.py \
+	data.epoch_size=100 \
+	data.batch_size=50_000 \
+	data.dataset.fov=30.0 \
+	data.dataset.dist=2.0 \
+	data.dataset.vector_field_mode=nearest_neighbor \
+	data.dataset.image_size=256 \
+	data.dataset.resolution=0.001 \
+	data.dataset.segments=8 \
+	data.dataset.max_surface_points=100_000 \
+	data.dataset.max_close_points=100_000 \
+	data.dataset.max_empty_points=100_000 \
+	callbacks.model_checkpoint.every_n_epochs=10 \
+	model.optimizer.lr=1e-03 \
+	model.lambda_gradient=0.0 \
+	model.lambda_surface=1.0 \
+	model.lambda_empty_space=1.0 \
+	model.log_metrics=True \
+	model.log_images=True \
+	model.log_optimizer=True \
+	scheduler=none \

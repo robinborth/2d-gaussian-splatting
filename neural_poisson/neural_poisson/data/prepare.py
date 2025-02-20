@@ -61,6 +61,13 @@ def select_random_points(
 def compute_chunks(num_chunks: int, chunk_size: int, values: list[torch.Tensor]):
     # compute how many permutations are needed
     points_count = values[0].shape[0]
+
+    # if max points is set to 0 we need to handle that
+    if points_count == 0:
+        if len(values) == 1:
+            return [values[0] for _ in range(chunk_size)]
+        return [[v for _ in range(chunk_size)] for v in values]
+
     permutation_count = math.ceil((num_chunks * chunk_size) / points_count)
 
     # check that we at least sample each data once
@@ -223,8 +230,8 @@ def extract_surface_data(
     points = point_map[~mask]
 
     # compute the indicator map
-    indicator_map = torch.ones_like(mask, dtype=points.dtype)
-    indicator_map[mask] = 0.0
+    indicator_map = torch.zeros_like(mask, dtype=points.dtype)
+    indicator_map[~mask] = 0.5  # the points on the surface should be between [0,1]
 
     return {
         "mask": mask,

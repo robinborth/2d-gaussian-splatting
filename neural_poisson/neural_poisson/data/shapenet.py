@@ -259,20 +259,20 @@ class ShapeNetCoreDataset(Dataset):
         # prepare the batch information
         return {
             # point information (point+vector)
-            "points_surface": self.chunks["points_surface"][idx],
-            "points_close": self.chunks["points_surface"][idx],
-            "points_empty": self.chunks["points_surface"][idx],
-            "vectors_surface": self.chunks["points_surface"][idx],
-            "vectors_close": self.chunks["points_surface"][idx],
+            "points_surface": self.chunks["points_surface"][idx].detach().clone(),
+            "points_close": self.chunks["points_close"][idx].detach().clone(),
+            "points_empty": self.chunks["points_empty"][idx].detach().clone(),
+            "vectors_surface": self.chunks["vectors_surface"][idx].detach().clone(),
+            "vectors_close": self.chunks["vectors_close"][idx].detach().clone(),
             # camera information
             "camera_idx": camera_idx,
             "camera": self.cameras[camera_idx],
             # images from the camera
-            "mask": self.masks[camera_idx],
-            "indicator_map": self.indicator_maps[camera_idx],
-            "normal_map": self.normal_maps[camera_idx],
-            "point_map": self.point_maps[camera_idx],
-            "vector_map": self.vector_maps[camera_idx],
+            "mask": self.masks[camera_idx].detach().clone(),
+            "indicator_map": self.indicator_maps[camera_idx].detach().clone(),
+            "normal_map": self.normal_maps[camera_idx].detach().clone(),
+            "point_map": self.point_maps[camera_idx].detach().clone(),
+            "vector_map": self.vector_maps[camera_idx].detach().clone(),
             # mesh information
             "mesh": self.mesh,
         }
