@@ -20,16 +20,25 @@ dataset:
   _partial_: True
   # dataset settings
   path: ${data.data_dir}/models/model_normalized.obj
+  dist: 1.0
+  fov: 60.0
   image_size: 256
   segments: 10
   fill_depth: max2  # "zfar", "max", "max(d)"
   # training settings
-  batch_size: ${data.batch_size}
-  epoch_size: ${data.epoch_size}
   device: ${device}
+  epoch_size: ${data.epoch_size}
+  batch_size: ${data.batch_size}
+  surface_batch_size_factor: 1.0
+  close_batch_size_factor: 0.5
+  empty_batch_size_factor: 0.5
   use_full_batch: False
   # subsampling settings
   resolution: 0.002
+  domain: [-1.0, 1.0]
+  max_surface_points: 100_000
+  max_close_points: 100_000
+  max_empty_points: 100_000
   # empty space sampling
   empty_points_per_ray: 4
   close_points_per_ray: 2

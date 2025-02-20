@@ -21,15 +21,16 @@ def plot_normal_maps(data: list, cameras: list, camera_space: bool = False):
     for normal_map, camera in zip(data, cameras):
         if camera_space:
             P = camera.get_world_to_view_transform()
-            normal_map = P.transform_normals(normal_map)
+            normal_map = P.transform_normals(normal_map.to(camera))
         normal = (normal_map + 1) / 2
         normal = torch.clip(normal, 0.0, 1.0)
         images.append(normal.detach().cpu().numpy())
     plot_camera_grid(images)
 
 
-def visualize_point_cloud(points: torch.Tensor, normals: torch.Tensor):
+def visualize_point_cloud(points: torch.Tensor, normals: torch.Tensor | None = None):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points.detach().cpu().numpy())
-    pcd.normals = o3d.utility.Vector3dVector(normals.detach().cpu().numpy())
+    if normals is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normals.detach().cpu().numpy())
     o3d.visualization.draw_plotly([pcd])

@@ -41,18 +41,16 @@ def get_points_camera_space_attributes(mesh: Meshes, camera: CamerasBase):
     return v_camera[None]  # (B,V,D)
 
 
-def select_random_points_and_normals(
+def select_random_points(
     points: torch.Tensor,
-    normals: torch.Tensor,
-    max_samples: int,
+    normals: torch.Tensor | None = None,
+    max_samples: int = 100_000,
 ):
+    if normals is None:
+        return points[torch.randperm(len(points))[:max_samples]]
     assert points.shape == normals.shape
     idx = torch.randperm(len(points))[:max_samples]
     return points[idx], normals[idx]
-
-
-def select_random_points(points: torch.Tensor, max_samples: int):
-    return points[torch.randperm(len(points))[:max_samples]]
 
 
 def load_mesh(path: str, device: str = "cuda"):
@@ -275,14 +273,19 @@ def extract_points_data(
 ################################################################################
 
 
-def uniform_sphere_cameras(dist: float = 1.0, segments: int = 10, device: str = "cuda"):
+def uniform_sphere_cameras(
+    dist: float = 1.0,
+    fov: float = 60,
+    segments: int = 10,
+    device: str = "cuda",
+):
     cameras = []
     elevs = torch.linspace(0, 360, segments + 1)[:segments]
     azims = torch.linspace(0, 360, segments + 1)[:segments]
     for elev in elevs:
         for azim in azims:
             R, T = look_at_view_transform(dist, elev, azim)
-            camera = FoVPerspectiveCameras(device=device, R=R, T=T)
+            camera = FoVPerspectiveCameras(device=device, R=R, T=T, fov=fov)
             cameras.append(camera)
     return cameras
 
@@ -370,7 +373,20 @@ def sample_empty_space_points(
     return p_e
 
 
-def subsample_points(points: torch.Tensor, resolution: float = 0.01, normals=None):
+def subsample_points(
+    points: torch.Tensor,
+    normals=None,
+    resolution: float = 0.01,
+    domain: tuple[float, float] = (-1.0, 1.0),
+    max_samples: int = 1_000_000,
+):
+    # check that the points are in the domain
+    mask = (points >= domain[0]) & (points <= domain[1])
+    mask = mask[:, 0] & mask[:, 1] & mask[:, 2]  # all points needs to be inside
+    points = points[mask]
+    if normals is not None:
+        normals = normals[mask]
+
     # fill the point cloud
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points.detach().cpu().numpy())
@@ -383,41 +399,46 @@ def subsample_points(points: torch.Tensor, resolution: float = 0.01, normals=Non
     # extract the points
     points = torch.tensor(np.asarray(pcd.points)).to(points)
     if normals is None:
+        points = select_random_points(points, max_samples=max_samples)
         return points
 
     # extract the normals if normals are provided as input
     normals = torch.tensor(np.asarray(pcd.normals)).to(normals)
+    points, normals = select_random_points(points, normals, max_samples)
     return points, normals
 
 
 def subsample_dataset_points(
     points_surface: torch.Tensor,
-    points_empty: torch.Tensor,
     points_close: torch.Tensor,
+    points_empty: torch.Tensor,
     normals: torch.Tensor,
     # subsampling settings
     resolution: float = 0.01,
-    empty_space_max_ratio: float = -1.0,
-    **kwargs,
+    domain: tuple[float, float] = (-1.0, 1.0),
+    max_surface_points: int = 100_000,
+    max_close_points: int = 100_000,
+    max_empty_points: int = 100_000,
 ):
-    # subsample points to the desired resolution
     points_surface, normals = subsample_points(
         points=points_surface,
         normals=normals,
         resolution=resolution,
+        domain=domain,
+        max_samples=max_surface_points,
     )
-    points_close = subsample_points(points=points_close, resolution=resolution)
-
-    # subsample empty points and ensure similar ratio
-    points_empty = subsample_points(points=points_empty, resolution=resolution)
-    if empty_space_max_ratio > 0:
-        surface_count = points_surface.shape[0] + points_close.shape[0]
-        max_empty_points = int(surface_count * empty_space_max_ratio)
-        max_empty_points = min(max_empty_points, points_empty.shape[0])
-        indices = torch.randperm(points_empty.shape[0])[:max_empty_points]
-        points_empty = points_empty[indices]
-
-    # return all the information
+    points_close = subsample_points(
+        points=points_close,
+        resolution=resolution,
+        domain=domain,
+        max_samples=max_close_points,
+    )
+    points_empty = subsample_points(
+        points=points_empty,
+        resolution=resolution,
+        domain=domain,
+        max_samples=max_empty_points,
+    )
     return points_surface, points_close, points_empty, normals
 
 
