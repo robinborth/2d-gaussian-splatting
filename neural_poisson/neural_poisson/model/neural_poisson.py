@@ -293,6 +293,8 @@ class NeuralPoisson(L.LightningModule):
     def logging_mesh(self, batch: dict, mode: str = "train"):
         # compute the mesh (slow)
         self.mesh = self.to_mesh()
+        if self.mesh is None:
+            return
 
         # compute chamfer distance
         chamfer_samples = self.hparams["num_points_chamfer"]
@@ -382,4 +384,6 @@ class NeuralPoisson(L.LightningModule):
 
         # perform marching cubes
         verts, faces = marching_cubes(sdf_grid[None], isolevel=isolevel)
+        if not len(verts[0]):
+            return None
         return Meshes(verts=verts, faces=faces).to(self.device)
