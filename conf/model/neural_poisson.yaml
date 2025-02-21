@@ -12,6 +12,14 @@ lambda_gradient: 1.0
 lambda_surface: 100.0
 lambda_empty_space: 100.0
 
+# warmup scheduler
+gradient_mode: one  # increase, one
+close_mode: one   # increase, one
+indicator_mode: zero  # decrease, zero
+gradient_steps: 100
+close_steps: 100
+indicator_steps: 100
+
 # indicator settings
 indicator_function: center  # default, center
 activation: sigmoid  # sin, sigmoid

@@ -21,6 +21,13 @@ class NeuralPoisson(L.LightningModule):
         lambda_gradient: float = 1.0,
         lambda_surface: float = 1.0,
         lambda_empty_space: float = 1.0,
+        # warmup scheduler
+        gradient_mode: str = "one",  # "increase", "one"
+        close_mode: str = "one",  # "increase", "one"
+        indicator_mode: str = "zero",  # "decrease",  "zero"
+        gradient_steps: int = 100,
+        close_steps: int = 100,
+        indicator_steps: int = 100,
         # indicator settings
         indicator_function: str = "default",  # "default", "center"
         activation: str = "sin",  # sin, sigmoid
@@ -82,6 +89,21 @@ class NeuralPoisson(L.LightningModule):
             stats[f"{name}_max"] = points_norm.max()
         return stats
 
+    def scheduler_step(self, key: str):
+        mode = self.hparams[f"{key}_mode"]
+        if mode == "zero":
+            return 0.0
+        if mode == "one":
+            return 1.0
+
+        steps = self.hparams[f"{key}_steps"]
+        t = max(min(self.trainer.global_step / steps, 1.0), 0.0)  # [0.0, 1.0]
+        if mode == "decrease":
+            return 1 - t
+        if mode == "increase":
+            return t
+        raise AttributeError(f"There is a wrong {mode=}!")
+
     def l2_loss(self, x: torch.Tensor):
         """Simple L2-Loss."""
         if x.numel() == 0:
@@ -104,16 +126,20 @@ class NeuralPoisson(L.LightningModule):
     def forward(self, points: torch.Tensor):
         """Evaluates the indicator function for the given points."""
         x = self.encoder(points)  # the logits of the encoder of dim (P, 1)
-        x = x.squeeze(-1)  # (P,)
+        logits = x.squeeze(-1)  # (P,)
 
         # transforms into indicator function
         if self.hparams["activation"] == "sin":
-            x = (torch.sin(x) + 1) / 2  # [0, 1]
+            X = (torch.sin(logits) + 1) / 2  # [0, 1]
         elif self.hparams["activation"] == "sigmoid":
-            x = torch.sigmoid(x)  # [0, 1]
+            X = torch.sigmoid(logits)  # [0, 1]
 
-        # # transform into the required range : [0, 1] <-> [-0.5, 0.5]
-        return x + self.X_offset
+        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
+        X = X + self.X_offset
+        # warmup for the indicator to be initial either 0.25 <-> -0.25
+        X = X - 0.25 * self.scheduler_step("indicator")
+
+        return X, logits
 
     def model_step(self, batch: dict):
         # extract the batch information
@@ -128,11 +154,17 @@ class NeuralPoisson(L.LightningModule):
         x_surface = torch.tensor([])
         x_close = torch.tensor([])
         x_empty = torch.tensor([])
+        logit_surface = torch.tensor([])
+        logit_close = torch.tensor([])
+        logit_empty = torch.tensor([])
         if self.hparams["lambda_surface"] or self.hparams["lambda_gradient"]:
-            x_surface = self.forward(points=p_surface)
+            x_surface, logit_surface = self.forward(points=p_surface)
         if self.hparams["lambda_empty_space"] or self.hparams["lambda_gradient"]:
-            x_close = self.forward(points=p_close)
-            x_empty = self.forward(points=p_empty)
+            x_close, logit_close = self.forward(points=p_close)
+            x_empty, logit_empty = self.forward(points=p_empty)
+        logit_surface = torch.nan_to_num(logit_surface.mean(), 0.0)
+        logit_close = torch.nan_to_num(logit_close.mean(), 0.0)
+        logit_empty = torch.nan_to_num(logit_empty.mean(), 0.0)
         time_X = time.time() - time_X
 
         time_dX = time.time()
@@ -153,9 +185,11 @@ class NeuralPoisson(L.LightningModule):
         L_empty_space_close = 0.0
         L_empty_space_empty = 0.0
         if self.hparams["lambda_empty_space"]:
-            L_empty_space_close = self.l2_loss(x_close - self.X_offset)
-            L_empty_space_empty = self.l2_loss(x_empty - self.X_offset)
-            empty_input = torch.cat([x_close - self.X_offset, x_empty - self.X_offset])
+            i_close = x_close - self.X_offset
+            i_empty = x_empty - self.X_offset
+            L_empty_space_close = self.l2_loss(i_close)
+            L_empty_space_empty = self.l2_loss(i_empty)
+            empty_input = torch.cat([i_close * self.scheduler_step("close"), i_empty])
             L_empty_space = self.l2_loss(empty_input)
 
         # gradient constraint
@@ -166,7 +200,7 @@ class NeuralPoisson(L.LightningModule):
             L_gradient_surface = self.l2_loss(dX_surface - v_surface)
             L_gradient_close = self.l2_loss(dX_close - v_close)
             gradient_input = torch.cat([dX_surface - v_surface, dX_close - v_close])
-            L_gradient = self.l2_loss(gradient_input)
+            L_gradient = self.l2_loss(gradient_input) * self.scheduler_step("gradient")
 
         # total loss computation
         loss = (
@@ -193,11 +227,19 @@ class NeuralPoisson(L.LightningModule):
                 "gradient": L_gradient,
                 "gradient_surface": L_gradient_surface,
                 "gradient_close": L_gradient_close,
+                "logit_surface": logit_surface,
+                "logit_close": logit_close,
+                "logit_empty": logit_empty,
                 "total": loss,
             },
             "time": {
                 "indicator": time_X * 1000,  # in ms
                 "gradient": time_dX * 1000,  # in ms
+            },
+            "scheduler": {
+                "gradient": self.scheduler_step("gradient"),
+                "close": self.scheduler_step("close"),
+                "indicator": self.scheduler_step("indicator"),
             },
             "stats": stats,
         }
@@ -236,6 +278,15 @@ class NeuralPoisson(L.LightningModule):
             if key.startswith("gradient"):
                 name = f"Gradient Loss Overview ({mode})"
                 unified_output[f"{name}/{key}"] = value
+        for key, value in output["loss"].items():
+            if key.startswith("logit"):
+                name = f"Logit Overview ({mode})"
+                unified_output[f"{name}/{key}"] = value
+
+        # log the warmup scheduler for stable training
+        for key, value in output["scheduler"].items():
+            name = f"Warmup Scheduler Overview ({mode})"
+            unified_output[f"{name}/{key}"] = value
 
         # log the timings of the indicator function and gradient computation
         for key, value in output["time"].items():
@@ -254,7 +305,7 @@ class NeuralPoisson(L.LightningModule):
     def logging_images(self, batch: dict, output: dict, mode: str = "train"):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
-        x_point_map = self.forward(points=point_map)
+        x_point_map, _ = self.forward(points=point_map)
 
         # log the images
         name = f"Image-{batch['camera_idx']:03} ({mode})"
@@ -372,7 +423,7 @@ class NeuralPoisson(L.LightningModule):
         # evaluate the indicator function on the grid structure
         sdfs = []
         for points in torch.split(grid, self.hparams["chunk_size"]):
-            x = self.forward(points.to(self.device))
+            x, _ = self.forward(points.to(self.device))
             # convert indicator to "sdf" value, where negative is inside
             sdfs.append(-x.detach().cpu())
         sdf_grid = torch.cat(sdfs).reshape(N, N, N)
