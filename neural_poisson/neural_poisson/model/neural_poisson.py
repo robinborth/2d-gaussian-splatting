@@ -113,6 +113,26 @@ class NeuralPoisson(L.LightningModule):
     # Logging
     ################################################################################
 
+    def compute_axis(self, axis: str = "x", voxel_size: int = 256):
+        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
+        min_val, max_val = self.hparams["domain"]
+
+        # compute the points along the axis
+        grid_vals = torch.linspace(min_val, max_val, N)
+        xs, ys = torch.meshgrid(grid_vals, grid_vals, indexing="ij")
+        zs = torch.zeros_like(xs)
+        if axis == "x":
+            coords = (zs.ravel(), xs.ravel(), ys.ravel())
+        if axis == "y":
+            coords = (xs.ravel(), zs.ravel(), ys.ravel())
+        if axis == "z":
+            coords = (xs.ravel(), ys.ravel(), zs.ravel())
+        points = torch.stack(coords, dim=-1).reshape(-1, 3)
+
+        # evaluate the indicator function
+        x, _ = self.forward(points.to(self.device))
+        return x.reshape(N, N)
+
     def compute_basic_stats(self, points: torch.Tensor, name: str):
         stats = {}
         points_norm = torch.linalg.vector_norm(points, dim=-1)
@@ -182,6 +202,15 @@ class NeuralPoisson(L.LightningModule):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map, _ = self.forward(points=point_map)
+
+        # log the axis
+        name = f"Image-Axis ({mode})"
+        imgX = self.compute_axis("x").detach().cpu().numpy()
+        imgY = self.compute_axis("y").detach().cpu().numpy()
+        imgZ = self.compute_axis("z").detach().cpu().numpy()
+        self.logger.log_image(f"{name}/x", [imgX])  # type: ignore
+        self.logger.log_image(f"{name}/y", [imgY])  # type: ignore
+        self.logger.log_image(f"{name}/z", [imgZ])  # type: ignore
 
         # log the images
         name = f"Image-{batch['camera_idx']:03} ({mode})"
@@ -297,7 +326,7 @@ class NeuralPoisson(L.LightningModule):
         # fetch the point on the grid lattice
         grid_vals = torch.linspace(min_val, max_val, N)
         xs, ys, zs = torch.meshgrid(grid_vals, grid_vals, grid_vals, indexing="ij")
-        grid = torch.stack((xs.ravel(), ys.ravel(), zs.ravel())).reshape(-1, 3)
+        grid = torch.stack((xs.ravel(), ys.ravel(), zs.ravel()), dim=-1).reshape(-1, 3)
 
         # evaluate the indicator function on the grid structure
         sdfs = []
