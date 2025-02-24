@@ -3,12 +3,12 @@ import time
 import lightning as L
 import torch
 import torch.nn as nn
-import wandb
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops.marching_cubes import marching_cubes
 from pytorch3d.structures import Meshes
 
+import wandb
 from neural_poisson.data.prepare import extract_surface_data
 
 
@@ -269,7 +269,7 @@ class NeuralPoisson(L.LightningModule):
                 fill_depth=dataset.fill_depth,
             )
             # log mesh images
-            name = f"Mesh-{batch['camera_idx']:03} ({mode})"
+            name = f"Mesh-{camera_idx:03} ({mode})"
             img_N = wandb.Image(data["normal_map"].detach().cpu().numpy())
             img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
             img_X = wandb.Image(data["indicator_map"].detach().cpu().numpy())
