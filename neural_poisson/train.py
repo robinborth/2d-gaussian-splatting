@@ -2,7 +2,6 @@ import logging
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from tqdm import tqdm
 
 from lib.utils.config_utils import instantiate_callbacks, set_configs
 
