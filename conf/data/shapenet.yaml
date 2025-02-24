@@ -51,4 +51,4 @@ dataset:
   sigma: 1.0
   chunk_threshold:  30
   # logging settings
-  log_camera_idxs: [6]
+  log_camera_idxs: [7,13,29,97]

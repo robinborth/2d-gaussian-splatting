@@ -603,8 +603,9 @@ def estimate_vector_field_k_nearest_neighbors(
 
         # gaussian-weighted average of the k nearest neighbors
         weights = torch.exp(-distances / (2 * sigma))
-        normalization = weights.sum(-1, keepdim=True)
-        vector = (normals[indices] * weights.unsqueeze(-1)).sum(-2) / normalization
+        # normalization = weights.sum(-1, keepdim=True)
+        # vector = (normals[indices] * weights.unsqueeze(-1)).sum(-2) / normalization
+        vector = (normals[indices] * weights.unsqueeze(-1)).sum(-2)
 
         # normalize the vector field to contain only normal vectors
         if normalize:

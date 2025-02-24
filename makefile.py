@@ -190,13 +190,13 @@ def main(cfg: DictConfig):
     makefile_generator.add(template_generator, values, prefixs, group_name)
 
     values = [
-        # 1.0,
-        # 7e-01,
-        # 3e-01,
-        # 1e-01,
-        # 7e-02,
-        # 3e-02,
-        # 1e-02,
+        1.0,
+        7e-01,
+        3e-01,
+        1e-01,
+        7e-02,
+        3e-02,
+        1e-02,
         7e-03,
         3e-03,
         1e-03,
@@ -206,7 +206,7 @@ def main(cfg: DictConfig):
         7e-05,
         3e-05,
         1e-05,
-        # 0.0,
+        0.0,
     ]
     prefixs = makefile_generator.convert_float_to_scientific(values)
     group_name = "lambda_gradient"
@@ -217,7 +217,7 @@ def main(cfg: DictConfig):
     logger.tags=[{group_name},{task_name}] \\
     task_name={task_name} \\
 	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
+	data.batch_size=25_000 \\
 	data.dataset.fov=30.0 \\
 	data.dataset.dist=2.0 \\
 	data.dataset.vector_field_mode=k_nearest_neighbors \\
@@ -235,7 +235,7 @@ def main(cfg: DictConfig):
 	model.log_metrics=True \\
 	model.log_images=True \\
 	model.log_optimizer=True \\
-	trainer.max_epochs=50 \\
+	trainer.max_epochs=100 \\
 	scheduler=none \\
     """
     makefile_generator.add(template_generator, values, prefixs, group_name)

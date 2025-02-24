@@ -71,6 +71,10 @@ class NeuralPoisson(L.LightningModule):
         # function to be in the range of (-0.5, 0.5)
         self.encoder = encoder()
 
+    ################################################################################
+    # Optimizer Utils
+    ################################################################################
+
     def configure_optimizers(self):
         """Default lightning optimizer setup."""
         optimizer = self.hparams["optimizer"](params=self.parameters())
@@ -79,15 +83,6 @@ class NeuralPoisson(L.LightningModule):
             lr_scheduler = {"scheduler": scheduler, "monitor": self.hparams["monitor"]}
             return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
         return {"optimizer": optimizer}
-
-    def compute_basic_stats(self, points: torch.Tensor, name: str):
-        stats = {}
-        points_norm = torch.linalg.vector_norm(points, dim=-1)
-        if points_norm.numel():
-            stats[f"{name}_mean"] = points_norm.mean()
-            stats[f"{name}_min"] = points_norm.min()
-            stats[f"{name}_max"] = points_norm.max()
-        return stats
 
     def scheduler_step(self, key: str):
         mode = self.hparams[f"{key}_mode"]
@@ -104,147 +99,28 @@ class NeuralPoisson(L.LightningModule):
             return t
         raise AttributeError(f"There is a wrong {mode=}!")
 
+    ################################################################################
+    # Loss Computation
+    ################################################################################
+
     def l2_loss(self, x: torch.Tensor):
         """Simple L2-Loss."""
         if x.numel() == 0:
             return 0.0
         return (x**2).mean()
 
-    def compute_gradient(self, X: torch.Tensor, points: torch.Tensor):
-        # we want to compute dX/dp, which is the gradient of the estimated indicator function
-        # X w.r.t the input points. However we can only compute dL/dp which computes the
-        # gradients from a loss scalar. The chain rule is dL/dp = dL/dX * dX/dp. In order to
-        # compute dX/dp we need to define the loss function do get dL/dX = 1, which results in
-        # a simple summation of dX, e.g. L=X.sum(), where the derivatives are 1.
-        return torch.autograd.grad(
-            outputs=X.sum(),
-            inputs=points,
-            retain_graph=True,
-            create_graph=True,
-        )[0]
+    ################################################################################
+    # Logging
+    ################################################################################
 
-    def forward(self, points: torch.Tensor):
-        """Evaluates the indicator function for the given points."""
-        x = self.encoder(points)  # the logits of the encoder of dim (P, 1)
-        logits = x.squeeze(-1)  # (P,)
-
-        # transforms into indicator function
-        if self.hparams["activation"] == "sin":
-            X = (torch.sin(logits) + 1) / 2  # [0, 1]
-        elif self.hparams["activation"] == "sigmoid":
-            X = torch.sigmoid(logits)  # [0, 1]
-
-        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
-        X = X + self.X_offset
-        # warmup for the indicator to be initial either 0.25 <-> -0.25
-        X = X - 0.25 * self.scheduler_step("indicator")
-
-        return X, logits
-
-    def model_step(self, batch: dict):
-        # extract the batch information
-        p_surface = batch["points_surface"].requires_grad_(True)
-        p_close = batch["points_close"].requires_grad_(True)
-        p_empty = batch["points_empty"]
-        v_surface = batch["vectors_surface"]
-        v_close = batch["vectors_close"]
-
-        # evaluate the indicator function
-        time_X = time.time()
-        x_surface = torch.tensor([])
-        x_close = torch.tensor([])
-        x_empty = torch.tensor([])
-        logit_surface = torch.tensor([])
-        logit_close = torch.tensor([])
-        logit_empty = torch.tensor([])
-        if self.hparams["lambda_surface"] or self.hparams["lambda_gradient"]:
-            x_surface, logit_surface = self.forward(points=p_surface)
-        if self.hparams["lambda_empty_space"] or self.hparams["lambda_gradient"]:
-            x_close, logit_close = self.forward(points=p_close)
-            x_empty, logit_empty = self.forward(points=p_empty)
-        logit_surface = torch.nan_to_num(logit_surface.mean(), 0.0)
-        logit_close = torch.nan_to_num(logit_close.mean(), 0.0)
-        logit_empty = torch.nan_to_num(logit_empty.mean(), 0.0)
-        time_X = time.time() - time_X
-
-        time_dX = time.time()
-        dX_surface = torch.tensor([])
-        dX_close = torch.tensor([])
-        if self.hparams["lambda_gradient"]:
-            dX_surface = self.compute_gradient(x_surface, p_surface)
-            dX_close = self.compute_gradient(x_close, p_close)
-        time_dX = time.time() - time_dX
-
-        # surface constraint
-        L_surface = 0.0
-        if self.hparams["lambda_surface"]:
-            L_surface = self.l2_loss(x_surface - self.X_offset - 0.5)
-
-        # empty space constraint
-        L_empty_space = 0.0
-        L_empty_space_close = 0.0
-        L_empty_space_empty = 0.0
-        if self.hparams["lambda_empty_space"]:
-            i_close = x_close - self.X_offset
-            i_empty = x_empty - self.X_offset
-            L_empty_space_close = self.l2_loss(i_close)
-            L_empty_space_empty = self.l2_loss(i_empty)
-            empty_input = torch.cat([i_close * self.scheduler_step("close"), i_empty])
-            L_empty_space = self.l2_loss(empty_input)
-
-        # gradient constraint
-        L_gradient = 0.0
-        L_gradient_surface = 0.0
-        L_gradient_close = 0.0
-        if self.hparams["lambda_gradient"]:
-            L_gradient_surface = self.l2_loss(dX_surface - v_surface)
-            L_gradient_close = self.l2_loss(dX_close - v_close)
-            gradient_input = torch.cat([dX_surface - v_surface, dX_close - v_close])
-            L_gradient = self.l2_loss(gradient_input) * self.scheduler_step("gradient")
-
-        # total loss computation
-        loss = (
-            self.hparams["lambda_surface"] * L_surface
-            + self.hparams["lambda_empty_space"] * L_empty_space
-            + self.hparams["lambda_gradient"] * L_gradient
-        )
-
-        # pre-compute usefull stats for logging
+    def compute_basic_stats(self, points: torch.Tensor, name: str):
         stats = {}
-        stats.update(self.compute_basic_stats(dX_surface, "dX_surface"))
-        stats.update(self.compute_basic_stats(dX_close, "dX_close"))
-        stats.update(self.compute_basic_stats(v_surface, "v_surface"))
-        stats.update(self.compute_basic_stats(v_close, "v_close"))
-
-        # prepare output dict
-        output = {
-            "total_loss": loss,
-            "loss": {
-                "surface": L_surface,
-                "empty_space": L_empty_space,
-                "empty_space_close": L_empty_space_close,
-                "empty_space_empty": L_empty_space_empty,
-                "gradient": L_gradient,
-                "gradient_surface": L_gradient_surface,
-                "gradient_close": L_gradient_close,
-                "logit_surface": logit_surface,
-                "logit_close": logit_close,
-                "logit_empty": logit_empty,
-                "total": loss,
-            },
-            "time": {
-                "indicator": time_X * 1000,  # in ms
-                "gradient": time_dX * 1000,  # in ms
-            },
-            "scheduler": {
-                "gradient": self.scheduler_step("gradient"),
-                "close": self.scheduler_step("close"),
-                "indicator": self.scheduler_step("indicator"),
-            },
-            "stats": stats,
-        }
-
-        return output
+        points_norm = torch.linalg.vector_norm(points, dim=-1)
+        if points_norm.numel():
+            stats[f"{name}_mean"] = points_norm.mean()
+            stats[f"{name}_min"] = points_norm.min()
+            stats[f"{name}_max"] = points_norm.max()
+        return stats
 
     def check_logging(self, mode: str = "metrics", batch_idx: int = 0):
         if mode == "mesh":
@@ -396,18 +272,21 @@ class NeuralPoisson(L.LightningModule):
             histograms[f"Weights Histogram/{name}"] = h
         self.logger.experiment.log(histograms)
 
-    def training_step(self, batch: dict, batch_idx: int):
-        """Perform training step."""
-        output = self.model_step(batch)
-        if self.check_logging("metrics", batch_idx):
-            self.logging_metrics(batch, output, "train")
-        if self.check_logging("images", batch_idx):
-            self.logging_images(batch, output, "train")
-        if self.check_logging("optimizer", batch_idx):
-            self.logging_optimizer("train")
-        if self.check_logging("mesh", batch_idx):
-            self.logging_mesh(batch, "train")
-        return output["total_loss"]
+    def log_video(self, sdf_grid: torch.Tensor, dim: str = "x"):
+        D = sdf_grid.shape[0]
+        volume = sdf_grid - self.X_offset
+        if dim == "x":
+            volume = sdf_grid[None].permute(1, 0, 2, 3).expand(D, 3, D, D)
+        if dim == "y":
+            volume = sdf_grid[None].permute(2, 0, 1, 3).expand(D, 3, D, D)
+        if dim == "z":
+            volume = sdf_grid[None].permute(3, 0, 1, 2).expand(D, 3, D, D)
+        video = wandb.Video((volume * 255).to(torch.uint8), fps=60)  # type: ignore
+        self.logger.experiment.log({f"Mesh Slicing Video/{dim}": video})  # type: ignore
+
+    ################################################################################
+    # Mesh Extraction
+    ################################################################################
 
     def to_mesh(self, voxel_size: int | None = None):
         # prepare the evaluation
@@ -428,6 +307,11 @@ class NeuralPoisson(L.LightningModule):
             sdfs.append(-x.detach().cpu())
         sdf_grid = torch.cat(sdfs).reshape(N, N, N)
 
+        # log the slice of the mesh
+        # self.log_video(sdf_grid=sdf_grid, dim="x")
+        # self.log_video(sdf_grid=sdf_grid, dim="y")
+        # self.log_video(sdf_grid=sdf_grid, dim="z")
+
         # ensures that we have a valid isolevel and can extract a mesh
         isolevel = self.isolevel
         if isolevel > sdf_grid.max() or isolevel < sdf_grid.min():
@@ -438,3 +322,156 @@ class NeuralPoisson(L.LightningModule):
         if not len(verts[0]):
             return None
         return Meshes(verts=verts, faces=faces).to(self.device)
+
+    ################################################################################
+    # Training Methods
+    ################################################################################
+
+    def compute_gradient(self, X: torch.Tensor, points: torch.Tensor):
+        # we want to compute dX/dp, which is the gradient of the estimated indicator function
+        # X w.r.t the input points. However we can only compute dL/dp which computes the
+        # gradients from a loss scalar. The chain rule is dL/dp = dL/dX * dX/dp. In order to
+        # compute dX/dp we need to define the loss function do get dL/dX = 1, which results in
+        # a simple summation of dX, e.g. L=X.sum(), where the derivatives are 1.
+        return torch.autograd.grad(
+            outputs=X.sum(),
+            inputs=points,
+            retain_graph=True,
+            create_graph=True,
+        )[0]
+
+    def forward(self, points: torch.Tensor):
+        """Evaluates the indicator function for the given points."""
+        x = self.encoder(points)  # the logits of the encoder of dim (P, 1)
+        logits = x.squeeze(-1)  # (P,)
+
+        # transforms into indicator function
+        if self.hparams["activation"] == "sin":
+            X = (torch.sin(logits) + 1) / 2  # [0, 1]
+        elif self.hparams["activation"] == "sigmoid":
+            X = torch.sigmoid(logits)  # [0, 1]
+
+        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
+        X = X + self.X_offset
+        # warmup for the indicator to be initial either 0.25 <-> -0.25
+        X = X - 0.25 * self.scheduler_step("indicator")
+
+        return X, logits
+
+    def model_step(self, batch: dict):
+        # extract the batch information
+        p_surface = batch["points_surface"].requires_grad_(True)
+        p_close = batch["points_close"].requires_grad_(True)
+        p_empty = batch["points_empty"]
+        v_surface = batch["vectors_surface"]
+        v_close = batch["vectors_close"]
+
+        # evaluate the indicator function
+        time_X = time.time()
+        x_surface = torch.tensor([])
+        x_close = torch.tensor([])
+        x_empty = torch.tensor([])
+        logit_surface = torch.tensor([])
+        logit_close = torch.tensor([])
+        logit_empty = torch.tensor([])
+        if self.hparams["lambda_surface"] or self.hparams["lambda_gradient"]:
+            x_surface, logit_surface = self.forward(points=p_surface)
+        if self.hparams["lambda_empty_space"] or self.hparams["lambda_gradient"]:
+            x_close, logit_close = self.forward(points=p_close)
+            x_empty, logit_empty = self.forward(points=p_empty)
+        logit_surface = torch.nan_to_num(logit_surface.mean(), 0.0)
+        logit_close = torch.nan_to_num(logit_close.mean(), 0.0)
+        logit_empty = torch.nan_to_num(logit_empty.mean(), 0.0)
+        time_X = time.time() - time_X
+
+        time_dX = time.time()
+        dX_surface = torch.tensor([])
+        dX_close = torch.tensor([])
+        if self.hparams["lambda_gradient"]:
+            dX_surface = self.compute_gradient(x_surface, p_surface)
+            dX_close = self.compute_gradient(x_close, p_close)
+        time_dX = time.time() - time_dX
+
+        # surface constraint
+        L_surface = 0.0
+        if self.hparams["lambda_surface"]:
+            L_surface = self.l2_loss(x_surface - self.X_offset - 0.5)
+
+        # empty space constraint
+        L_empty_space = 0.0
+        L_empty_space_close = 0.0
+        L_empty_space_empty = 0.0
+        if self.hparams["lambda_empty_space"]:
+            i_close = x_close - self.X_offset
+            i_empty = x_empty - self.X_offset
+            L_empty_space_close = self.l2_loss(i_close)
+            L_empty_space_empty = self.l2_loss(i_empty)
+            empty_input = torch.cat([i_close * self.scheduler_step("close"), i_empty])
+            L_empty_space = self.l2_loss(empty_input)
+
+        # gradient constraint
+        L_gradient = 0.0
+        L_gradient_surface = 0.0
+        L_gradient_close = 0.0
+        if self.hparams["lambda_gradient"]:
+            L_gradient_surface = self.l2_loss(dX_surface - v_surface)
+            L_gradient_close = self.l2_loss(dX_close - v_close)
+            gradient_input = torch.cat([dX_surface - v_surface, dX_close - v_close])
+            L_gradient = self.l2_loss(gradient_input) * self.scheduler_step("gradient")
+
+        # total loss computation
+        loss = (
+            self.hparams["lambda_surface"] * L_surface
+            + self.hparams["lambda_empty_space"] * L_empty_space
+            + self.hparams["lambda_gradient"] * L_gradient
+        )
+
+        # pre-compute usefull stats for logging
+        stats = {}
+        stats.update(self.compute_basic_stats(dX_surface, "dX_surface"))
+        stats.update(self.compute_basic_stats(dX_close, "dX_close"))
+        stats.update(self.compute_basic_stats(v_surface, "v_surface"))
+        stats.update(self.compute_basic_stats(v_close, "v_close"))
+
+        # prepare output dict
+        output = {
+            "total_loss": loss,
+            "loss": {
+                "surface": L_surface,
+                "empty_space": L_empty_space,
+                "empty_space_close": L_empty_space_close,
+                "empty_space_empty": L_empty_space_empty,
+                "gradient": L_gradient,
+                "gradient_surface": L_gradient_surface,
+                "gradient_close": L_gradient_close,
+                "logit_surface": logit_surface,
+                "logit_close": logit_close,
+                "logit_empty": logit_empty,
+                "total": loss,
+            },
+            "time": {
+                "indicator": time_X * 1000,  # in ms
+                "gradient": time_dX * 1000,  # in ms
+            },
+            "scheduler": {
+                "gradient": self.scheduler_step("gradient"),
+                "close": self.scheduler_step("close"),
+                "indicator": self.scheduler_step("indicator"),
+            },
+            "stats": stats,
+        }
+
+        return output
+
+    def training_step(self, batch: dict, batch_idx: int):
+        """Perform training step."""
+        output = self.model_step(batch)
+        if self.check_logging("metrics", batch_idx):
+            self.logging_metrics(batch, output, "train")
+        if self.check_logging("images", batch_idx):
+            self.logging_images(batch, output, "train")
+        if self.check_logging("optimizer", batch_idx):
+            self.logging_optimizer("train")
+        if self.check_logging("mesh", batch_idx):
+            self.logging_mesh(batch, "train")
+        return output["total_loss"]
