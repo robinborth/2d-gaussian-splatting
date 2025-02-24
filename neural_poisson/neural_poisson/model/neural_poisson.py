@@ -30,7 +30,7 @@ class NeuralPoisson(L.LightningModule):
         indicator_steps: int = 100,
         # indicator settings
         indicator_function: str = "default",  # "default", "center"
-        activation: str = "sin",  # sin, sigmoid
+        activation: str = "sin",  # sin, sigmoid, tanh
         # logging
         log_camera_idxs: list[int] = [0],
         log_metrics: bool = True,
@@ -56,7 +56,7 @@ class NeuralPoisson(L.LightningModule):
         self.save_hyperparameters(logger=False)
 
         # check for valid values
-        assert activation in ["sin", "sigmoid"]
+        assert activation in ["sin", "sigmoid", "tanh"]
         assert indicator_function in ["default", "center"]
 
         # for default: [0,1]; for center: [-0.5, 0.5]
@@ -350,6 +350,8 @@ class NeuralPoisson(L.LightningModule):
             X = (torch.sin(logits) + 1) / 2  # [0, 1]
         elif self.hparams["activation"] == "sigmoid":
             X = torch.sigmoid(logits)  # [0, 1]
+        elif self.hparams["activation"] == "tanh":
+            X = (torch.tanh(logits) + 1) / 2  # [0, 1]
 
         # transform into the required range : [0, 1] <-> [-0.5, 0.5]
         X = X + self.X_offset

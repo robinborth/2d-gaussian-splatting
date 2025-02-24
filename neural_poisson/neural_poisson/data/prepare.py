@@ -65,8 +65,8 @@ def compute_chunks(num_chunks: int, chunk_size: int, values: list[torch.Tensor])
     # if max points is set to 0 we need to handle that
     if points_count == 0:
         if len(values) == 1:
-            return [values[0] for _ in range(chunk_size)]
-        return [[v for _ in range(chunk_size)] for v in values]
+            return [values[0] for _ in range(num_chunks)]
+        return [[v for _ in range(num_chunks)] for v in values]
 
     permutation_count = math.ceil((num_chunks * chunk_size) / points_count)
 
@@ -228,7 +228,7 @@ def extract_surface_data(
     # transform point and normal map to world space
     P = camera.get_world_to_view_transform()
     normal_map = P.inverse().transform_normals(normal_map)
-    point_map = P.inverse().transform_points(point_map)
+    point_map = P.inverse().transform_points(point_map, eps=None)
 
     # compute the points in world space and remove the masks
     normals = normal_map[~mask]
