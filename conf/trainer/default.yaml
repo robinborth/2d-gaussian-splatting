@@ -1,4 +1,9 @@
 _target_: lightning.pytorch.trainer.Trainer
+# _partial_: True
+
+# logger: ???
+# callbacks: ???
+
 default_root_dir: ${paths.output_dir}
 accelerator: ${device}
 
@@ -8,10 +13,10 @@ max_epochs: 100
 
 # logging
 num_sanity_val_steps: 0
-check_val_every_n_epoch: 0
+check_val_every_n_epoch: 1  # this needs to be 1 for checkpointing
 log_every_n_steps: 20
-enable_checkpointing: True
+# enable_checkpointing: True
 
 # stability
-detect_anomaly: False
+# detect_anomaly: False
 # deterministic: True
