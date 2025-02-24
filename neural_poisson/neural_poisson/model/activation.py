@@ -22,7 +22,12 @@ class SinActivation(nn.Module):
 
 
 def activation_fn(key: str):
-    loockup = {"relu": nn.ReLU, "sin": SinActivation, "cos": CosActivation}
+    loockup = {
+        "relu": nn.ReLU,
+        "sin": SinActivation,
+        "cos": CosActivation,
+        "gelu": nn.GELU,
+    }
     if key not in loockup:
         raise AttributeError(f"Unknown activation function {key=}")
     return loockup[key]()

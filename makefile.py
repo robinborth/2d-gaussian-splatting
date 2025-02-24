@@ -137,105 +137,68 @@ def main(cfg: DictConfig):
     callbacks.model_checkpoint.every_n_epochs=5 \\
     """
 
-    values: Any = [
-        1e-02,
-        3e-02,
-        5e-02,
-        7e-02,
-        9e-02,
-        1e-03,
-        3e-03,
-        5e-03,
-        7e-03,
-        9e-03,
-        1e-04,
-        3e-04,
-        5e-04,
-        7e-04,
-        9e-04,
-    ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "learning_rate"
-    template_generator = """
-    python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	model.optimizer.lr={value} \\
-    model.lambda_gradient=1.0 \\
-	model.lambda_surface=1.0 \\
-	model.lambda_empty_space=1.0 \\
-    trainer.max_epochs=1000 \\
-    data.epoch_size=50 \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = ["nearest_neighbor", "k_nearest_neighbors", "cluster"]
+    values = ["relu", "gelu", "sin", "cos"]
     prefixs = values
-    group_name = "vector_field"
+    group_name = "sigmoid_mlp"
     template_generator = """
-    python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	model.optimizer.lr=1e-03 \\
-    model.lambda_gradient=1.0 \\
-	model.lambda_surface=1.0 \\
-	model.lambda_empty_space=1.0 \\
-    trainer.max_epochs=1000 \\
-    data.epoch_size=50 \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = [
-        1.0,
-        7e-01,
-        3e-01,
-        1e-01,
-        7e-02,
-        3e-02,
-        1e-02,
-        7e-03,
-        3e-03,
-        1e-03,
-        7e-04,
-        3e-04,
-        1e-04,
-        7e-05,
-        3e-05,
-        1e-05,
-        0.0,
-    ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "lambda_gradient"
-    template_generator = """
-    python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
 	data.epoch_size=100 \\
-	data.batch_size=25_000 \\
+	data.batch_size=50_000 \\
 	data.dataset.fov=30.0 \\
 	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=k_nearest_neighbors \\
 	data.dataset.image_size=256 \\
-	data.dataset.resolution=0.0002 \\
 	data.dataset.segments=12 \\
+	data.dataset.k=10 \\
+	data.dataset.vector_field_mode=k_nearest_neighbors \\
 	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=100_000 \\
-	data.dataset.max_empty_points=100_000 \\
-	callbacks.model_checkpoint.every_n_epochs=10 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
 	model.optimizer.lr=1e-04 \\
-	model.lambda_gradient={value} \\
-	model.lambda_surface=1.0 \\
-	model.lambda_empty_space=1.0 \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
 	model.log_metrics=True \\
 	model.log_images=True \\
 	model.log_optimizer=True \\
-	trainer.max_epochs=100 \\
+	model.log_mesh=False \\
+	model.activation=sigmoid \\
+	model.encoder.activation={value} \\
+	trainer.max_epochs=50 \\
+	trainer.detect_anomaly=False \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = ["relu", "gelu", "sin", "cos"]
+    prefixs = values
+    group_name = "sin_mlp"
+    template_generator = """
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.image_size=256 \\
+	data.dataset.segments=12 \\
+	data.dataset.k=10 \\
+	data.dataset.vector_field_mode=k_nearest_neighbors \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr=1e-04 \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=False \\
+	model.activation=sigmoid \\
+	model.encoder.activation={value} \\
+	trainer.max_epochs=50 \\
+	trainer.detect_anomaly=False \\
 	scheduler=none \\
     """
     makefile_generator.add(template_generator, values, prefixs, group_name)

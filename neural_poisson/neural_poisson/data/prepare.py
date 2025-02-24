@@ -96,6 +96,11 @@ def compute_chunks(num_chunks: int, chunk_size: int, values: list[torch.Tensor])
     return chunks
 
 
+def cdist(x: torch.Tensor, y: torch.Tensor):
+    # without numerical instabilities compute l2 dist
+    return torch.sqrt(((x[:, None, :] - y[None, :, :]) ** 2).sum(dim=-1))
+
+
 def load_mesh(path: str, device: str = "cuda"):
     return load_objs_as_meshes([path], device=device)
 
@@ -448,6 +453,8 @@ def subsample_points(
     # extract the normals if normals are provided as input
     normals = torch.tensor(np.asarray(pcd.normals)).to(normals)
     points, normals = select_random_points(points, normals, max_samples)
+    # for stable computation of the normal
+    normals /= torch.linalg.vector_norm(normals, dim=-1)[..., None] + 1e-08
     return points, normals
 
 
@@ -497,13 +504,12 @@ def estimate_vector_field_cluster(
     k: int = 20,
     sigma: float = 1.0,
     threshold: float = 30.0,
-    normalize: bool = True,
     chunk_size: int = 1_000,
 ):
     vectors = []
     for q in torch.split(query, chunk_size):
         # compute the distances
-        distances = torch.cdist(q, points, p=2)
+        distances = cdist(q, points)
         distances, indices = torch.topk(distances, k, dim=1, largest=False)
 
         # gaussian-weighted average of the k nearest neighbors
@@ -579,8 +585,6 @@ def estimate_vector_field_cluster(
         vector = cluster_vectors[torch.arange(cluster_vectors.shape[0]), indices]
 
         # normalize the vector field to contain only normal vectors
-        if normalize:
-            vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
         vectors.append(vector)
     # return the inverse of the normal as the vector field
     return -torch.cat(vectors)
@@ -592,24 +596,19 @@ def estimate_vector_field_k_nearest_neighbors(
     query: torch.Tensor,
     k: int = 20,
     sigma: float = 1.0,
-    normalize: bool = True,
     chunk_size: int = 1_000,
 ):
     vectors = []
     for q in torch.split(query, chunk_size):
         # compute the distances
-        distances = torch.cdist(q, points, p=2)
+        distances = cdist(q, points)
         distances, indices = torch.topk(distances, k, dim=1, largest=False)
 
         # gaussian-weighted average of the k nearest neighbors
         weights = torch.exp(-distances / (2 * sigma))
-        # normalization = weights.sum(-1, keepdim=True)
-        # vector = (normals[indices] * weights.unsqueeze(-1)).sum(-2) / normalization
         vector = (normals[indices] * weights.unsqueeze(-1)).sum(-2)
 
-        # normalize the vector field to contain only normal vectors
-        if normalize:
-            vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
+        # add the vector to the vector field
         vectors.append(vector)
     # return the inverse of the normal as the vector field
     return -torch.cat(vectors)
@@ -619,28 +618,23 @@ def estimate_vector_field_nearest_neighbor(
     points: torch.Tensor,
     normals: torch.Tensor,
     query: torch.Tensor,
-    normalize: bool = True,
+    sigma: float = 1.0,
     chunk_size: int = 1_000,
 ):
-    vectors = []
-    for q in torch.split(query, chunk_size):
-        # compute the distances
-        distances = torch.cdist(q, points, p=2)
-        distances, indices = torch.topk(distances, 1, dim=1, largest=False)
-        vector = normals[indices[..., 0]]
-        # normalize the vector field to contain only normal vectors
-        if normalize:
-            vector /= torch.linalg.vector_norm(vector, dim=-1).unsqueeze(-1)
-        vectors.append(vector)
-    # return the inverse of the normal as the vector field
-    return -torch.cat(vectors)
+    return estimate_vector_field_k_nearest_neighbors(
+        points=points,
+        normals=normals,
+        query=query,
+        chunk_size=chunk_size,
+        sigma=sigma,
+        k=1,
+    )
 
 
 def select_vector_field_function(
     points: torch.Tensor,
     normals: torch.Tensor,
     vector_field_mode: str = "nearest_neighbor",
-    normalize: bool = True,
     chunk_size: int = 1_000,
     k: int = 20,
     sigma: float = 1.0,
@@ -651,7 +645,7 @@ def select_vector_field_function(
             estimate_vector_field_nearest_neighbor,
             points=points,
             normals=normals,
-            normalize=normalize,
+            sigma=sigma,
             chunk_size=chunk_size,
         )
     if vector_field_mode == "k_nearest_neighbors":
@@ -661,7 +655,6 @@ def select_vector_field_function(
             normals=normals,
             k=k,
             sigma=sigma,
-            normalize=normalize,
             chunk_size=chunk_size,
         )
     if vector_field_mode == "cluster":
@@ -671,7 +664,6 @@ def select_vector_field_function(
             normals=normals,
             k=k,
             sigma=sigma,
-            normalize=normalize,
             chunk_size=chunk_size,
             threshold=threshold,
         )

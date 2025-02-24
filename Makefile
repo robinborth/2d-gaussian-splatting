@@ -2,25 +2,21 @@
 # Debug 
 ########################################################################
 
-train_full:
+debug:
 	python neural_poisson/train.py \
-	logger.group=train \
-	logger.tags=[train] \
-	logger.name=train_full \
-	task_name=train_full \
 	data.epoch_size=100 \
 	data.batch_size=50_000 \
 	data.dataset.fov=30.0 \
 	data.dataset.dist=2.0 \
-	data.dataset.vector_field_mode=k_nearest_neighbors \
 	data.dataset.image_size=256 \
-	data.dataset.resolution=0.0002 \
 	data.dataset.segments=12 \
+	data.dataset.k=10 \
+	data.dataset.vector_field_mode=k_nearest_neighbors \
 	data.dataset.max_surface_points=100_000 \
 	data.dataset.max_close_points=0 \
 	data.dataset.max_empty_points=0 \
+	data.dataset.resolution=0.001 \
 	data.dataset.sigma=0.001 \
-	data.dataset.normalize=False \
 	model.optimizer.lr=1e-04 \
 	model.lambda_gradient=1.0 \
 	model.lambda_surface=0.0 \
@@ -28,8 +24,15 @@ train_full:
 	model.log_metrics=True \
 	model.log_images=True \
 	model.log_optimizer=True \
+	model.log_mesh=False \
+	model.activation=sigmoid \
+	model.encoder.activation=gelu \
 	trainer.max_epochs=1000 \
+	trainer.detect_anomaly=False \
 	scheduler=none \
+
+
+
 
 ########################################################################
 # Mesh Extraction

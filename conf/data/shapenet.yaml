@@ -20,8 +20,8 @@ dataset:
   _partial_: True
   # dataset settings
   path: ${data.data_dir}/models/model_normalized.obj
-  dist: 1.0
-  fov: 60.0
+  dist: 2.0
+  fov: 30.0
   image_size: 256
   segments: 10
   fill_depth: max2  # "zfar", "max", "max(d)"
@@ -45,10 +45,9 @@ dataset:
   close_points_surface_threshold: 0.01
   # vector field settings 
   vector_field_mode: k_nearest_neighbors  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
-  normalize: True
   vector_field_chunk_size: 1_000
   k: 20
   sigma: 1.0
   chunk_threshold:  30
   # logging settings
-  log_camera_idxs: [7,13,29,97]
+  log_camera_idxs: [7,13,29,97]  # [7,13,29,97]

@@ -90,7 +90,6 @@ class ShapeNetCoreDataset(Dataset):
         # vector field settings: "nearest_neighbor", "k_nearest_neighbors", "cluster"
         vector_field_mode: str = "nearest_neighbor",
         vector_field_chunk_size: int = 1_000,
-        normalize: bool = True,
         k: int = 20,
         sigma: float = 1.0,
         chunk_threshold: float = 30,
@@ -143,8 +142,8 @@ class ShapeNetCoreDataset(Dataset):
         self.start_log("\t-> subsample the data with a resolution ...")
         points_surface, points_close, points_empty, normals = subsample_dataset_points(
             points_surface=data["points_surface"],
-            points_empty=data["points_empty"],
             points_close=data["points_close"],
+            points_empty=data["points_empty"],
             normals=data["normals"],
             resolution=resolution,
             domain=domain,
@@ -172,7 +171,6 @@ class ShapeNetCoreDataset(Dataset):
             normals=self.normals_surface,
             vector_field_mode=vector_field_mode,
             chunk_size=vector_field_chunk_size,
-            normalize=normalize,
             k=k,
             sigma=sigma,
             threshold=chunk_threshold,

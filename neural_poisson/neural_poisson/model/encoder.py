@@ -35,7 +35,6 @@ class MLP(nn.Sequential):
         layers.append(nn.Linear(hidden_dim, out_dim, bias=False))
         names.append(f"layer_{i+2}")
 
-        # self.mlp = nn.Sequential(*layers)
         ordered_dict = OrderedDict(zip(names, layers))
         super().__init__(ordered_dict)
 
