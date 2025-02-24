@@ -141,6 +141,11 @@ def main(cfg: DictConfig):
     prefixs = values
     group_name = "sigmoid_mlp"
     template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
 	data.epoch_size=100 \\
 	data.batch_size=50_000 \\
 	data.dataset.fov=30.0 \\
@@ -174,6 +179,11 @@ def main(cfg: DictConfig):
     prefixs = values
     group_name = "sin_mlp"
     template_generator = """
+ 	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
 	data.epoch_size=100 \\
 	data.batch_size=50_000 \\
 	data.dataset.fov=30.0 \\
@@ -195,7 +205,7 @@ def main(cfg: DictConfig):
 	model.log_images=True \\
 	model.log_optimizer=True \\
 	model.log_mesh=False \\
-	model.activation=sigmoid \\
+	model.activation=sin \\
 	model.encoder.activation={value} \\
 	trainer.max_epochs=50 \\
 	trainer.detect_anomaly=False \\

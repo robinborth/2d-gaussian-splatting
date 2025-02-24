@@ -12,7 +12,7 @@ debug:
 	data.dataset.segments=12 \
 	data.dataset.k=10 \
 	data.dataset.vector_field_mode=k_nearest_neighbors \
-	data.dataset.max_surface_points=100_000 \
+	data.dataset.max_surface_points=1 \
 	data.dataset.max_close_points=0 \
 	data.dataset.max_empty_points=0 \
 	data.dataset.resolution=0.001 \
@@ -26,7 +26,7 @@ debug:
 	model.log_optimizer=True \
 	model.log_mesh=False \
 	model.activation=sigmoid \
-	model.encoder.activation=gelu \
+	model.encoder.activation=relu \
 	trainer.max_epochs=1000 \
 	trainer.detect_anomaly=False \
 	scheduler=none \
