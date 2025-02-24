@@ -1,0 +1,9 @@
+# @package data
+
+defaults:
+  - shapenet
+  - _self_
+
+# dataset settings
+shapenet_id: 1a04e3eab45ca15dd86060f189eb133
+data_dir: ${paths.data_dir}/ShapeNetCore/02691156/${data.shapenet_id}

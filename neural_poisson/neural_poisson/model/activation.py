@@ -27,6 +27,7 @@ def activation_fn(key: str):
         "sin": SinActivation,
         "cos": CosActivation,
         "gelu": nn.GELU,
+        "tanh": nn.Tanh,
     }
     if key not in loockup:
         raise AttributeError(f"Unknown activation function {key=}")

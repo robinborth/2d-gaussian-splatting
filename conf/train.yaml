@@ -6,7 +6,7 @@ defaults:
   - optimizer: adam
   - scheduler: linear
   - logger: wandb
-  - data: shapenet
+  - data: couch
   - trainer: default
   - callbacks: default
   - hydra: default
