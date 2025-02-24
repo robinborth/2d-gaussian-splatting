@@ -3,7 +3,7 @@ _target_: neural_poisson.data.shapenet.ShapeNetCoreDatamodule
 
 # dataset settings
 shapenet_id: 1a04e3eab45ca15dd86060f189eb133
-data_dir: ${paths.data_dir}/ShapeNetCoreTiny/02691156/${data.shapenet_id}
+data_dir: ${paths.data_dir}/ShapeNetCore/02691156/${data.shapenet_id}
 
 # training settings
 batch_size: 10_000
