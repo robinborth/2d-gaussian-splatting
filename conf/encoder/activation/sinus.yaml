@@ -1,0 +1,4 @@
+# @package model.encoder.activation
+
+_target_: neural_poisson.model.encoder.SinusActivation
+_partial_: True

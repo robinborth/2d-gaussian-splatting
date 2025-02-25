@@ -9,6 +9,7 @@ from pytorch3d.ops.marching_cubes import marching_cubes
 from pytorch3d.structures import Meshes
 
 import wandb
+from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
 from neural_poisson.data.prepare import extract_surface_data
 
 
@@ -115,22 +116,15 @@ class NeuralPoisson(L.LightningModule):
 
     def compute_axis(self, axis: str = "x", voxel_size: int = 256):
         N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
-        min_val, max_val = self.hparams["domain"]
-
-        # compute the points along the axis
-        grid_vals = torch.linspace(min_val, max_val, N)
-        xs, ys = torch.meshgrid(grid_vals, grid_vals, indexing="ij")
-        zs = torch.zeros_like(xs)
-        if axis == "x":
-            coords = (zs.ravel(), xs.ravel(), ys.ravel())
-        if axis == "y":
-            coords = (xs.ravel(), zs.ravel(), ys.ravel())
-        if axis == "z":
-            coords = (xs.ravel(), ys.ravel(), zs.ravel())
-        points = torch.stack(coords, dim=-1).reshape(-1, 3)
-
+        grid = coord_grid_along_axis(
+            axis=axis,
+            voxel_size=N,
+            domain=self.hparams["domain"],
+            default_coord=0.0,
+            device=self.device,
+        )
         # evaluate the indicator function
-        x, _ = self.forward(points.to(self.device))
+        x, _ = self.forward(grid.reshape(-1, 3))
         return x.reshape(N, N)
 
     def compute_basic_stats(self, points: torch.Tensor, name: str):
@@ -248,13 +242,13 @@ class NeuralPoisson(L.LightningModule):
 
     def logging_mesh(self, batch: dict, mode: str = "train"):
         # compute the mesh (slow)
-        self.mesh = self.to_mesh()
-        if self.mesh is None:
+        mesh = self.to_mesh()
+        if mesh is None:
             return
 
         # compute chamfer distance
         chamfer_samples = self.hparams["num_points_chamfer"]
-        p1 = sample_points_from_meshes(self.mesh, chamfer_samples)
+        p1 = sample_points_from_meshes(mesh, chamfer_samples)
         p2 = sample_points_from_meshes(batch["mesh"], chamfer_samples)
         loss, _ = chamfer_distance(p1, p2)
         self.log(f"Metrics ({mode})/chamfer", loss, prog_bar=False)
@@ -264,7 +258,7 @@ class NeuralPoisson(L.LightningModule):
         for camera_idx in dataset.log_camera_idxs:
             data = extract_surface_data(
                 camera=dataset.cameras[camera_idx],
-                mesh=self.mesh,
+                mesh=mesh,
                 image_size=dataset.image_size,
                 fill_depth=dataset.fill_depth,
             )
@@ -320,13 +314,10 @@ class NeuralPoisson(L.LightningModule):
     def to_mesh(self, voxel_size: int | None = None):
         # prepare the evaluation
         self.eval()
-        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
-        min_val, max_val = self.hparams["domain"]
 
         # fetch the point on the grid lattice
-        grid_vals = torch.linspace(min_val, max_val, N)
-        xs, ys, zs = torch.meshgrid(grid_vals, grid_vals, grid_vals, indexing="ij")
-        grid = torch.stack((xs.ravel(), ys.ravel(), zs.ravel()), dim=-1).reshape(-1, 3)
+        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
+        grid = coord_grid(voxel_size=N, domain=self.hparams["domain"]).reshape(-1, 3)
 
         # evaluate the indicator function on the grid structure
         sdfs = []
@@ -334,12 +325,11 @@ class NeuralPoisson(L.LightningModule):
             x, _ = self.forward(points.to(self.device))
             # convert indicator to "sdf" value, where negative is inside
             sdfs.append(-x.detach().cpu())
-        sdf_grid = torch.cat(sdfs).reshape(N, N, N)
+        sdf_grid = -torch.cat(sdfs).reshape(N, N, N)
 
         # log the slice of the mesh
-        # self.log_video(sdf_grid=sdf_grid, dim="x")
-        # self.log_video(sdf_grid=sdf_grid, dim="y")
-        # self.log_video(sdf_grid=sdf_grid, dim="z")
+        # for dim in ["x", "y", "z"]:
+        #     self.log_video(sdf_grid=sdf_grid, dim=dim)
 
         # ensures that we have a valid isolevel and can extract a mesh
         isolevel = self.isolevel
