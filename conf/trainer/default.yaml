@@ -18,5 +18,5 @@ log_every_n_steps: 20
 # enable_checkpointing: True
 
 # stability
-# detect_anomaly: False
+detect_anomaly: False
 # deterministic: True

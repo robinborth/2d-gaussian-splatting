@@ -1,10 +1,17 @@
 # @package model 
 
+defaults:
+  - activation: relu
+
 encoder:
   _target_: neural_poisson.model.encoder.MLP
   _partial_: True
-  in_dim: 3
-  out_dim: 1
-  hidden_dim: 256 
-  num_layers: 5
-  activation: relu  # "sin", "relu"
+  in_features: 3
+  out_features: 1
+  hidden_features: 256 
+  num_hidden_layers: 5
+  activation: ???
+  out_activation: False
+  out_bias: False
+  weight_init: null
+  first_layer_weight_init: null
