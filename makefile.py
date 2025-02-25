@@ -138,13 +138,6 @@ def main(cfg: DictConfig):
     """
 
     values = [
-        9e-03,
-        7e-03,
-        5e-03,
-        3e-03,
-        1e-03,
-        9e-04,
-        7e-04,
         5e-04,
         3e-04,
         1e-04,
@@ -153,14 +146,9 @@ def main(cfg: DictConfig):
         5e-05,
         3e-05,
         1e-05,
-        9e-06,
-        7e-06,
-        5e-06,
-        3e-06,
-        1e-06,
     ]
     prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "learning_rate"
+    group_name = "MLP_tanh_Indicator_sigmoid_lr"
     template_generator = """
   	python neural_poisson/train.py \\
     logger.group={group_name} \\
@@ -185,86 +173,27 @@ def main(cfg: DictConfig):
 	model.log_images=True \\
 	model.log_optimizer=True \\
 	model.log_mesh=True \\
-	model.activation=tanh \\
-	model.encoder.activation=gelu \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = ["relu", "gelu", "sin", "cos", "tanh"]
-    prefixs = values
-    group_name = "sin_mlp"
-    template_generator = """
- 	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr=1e-04 \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.activation=sin \\
-	model.encoder.activation={value} \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = ["relu", "gelu", "sin", "cos", "tanh"]
-    prefixs = values
-    group_name = "sigmoid_mlp"
-    template_generator = """
- 	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr=1e-04 \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
+	model.encoder.activation=tanh \\
 	model.activation=sigmoid \\
-	model.encoder.activation={value} \\
 	trainer.max_epochs=100 \\
 	scheduler=none \\
     """
     makefile_generator.add(template_generator, values, prefixs, group_name)
 
-    values = ["relu", "gelu", "sin", "cos", "tanh"]
-    prefixs = values
-    group_name = "tanh_mlp"
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_sin_Indicator_tanh_lr"
     template_generator = """
- 	python neural_poisson/train.py \\
+  	python neural_poisson/train.py \\
     logger.group={group_name} \\
     logger.name={task_name} \\
     logger.tags=[{group_name},{task_name}] \\
@@ -279,7 +208,7 @@ def main(cfg: DictConfig):
 	data.dataset.max_empty_points=0 \\
 	data.dataset.resolution=0.001 \\
 	data.dataset.sigma=0.001 \\
-	model.optimizer.lr=1e-04 \\
+	model.optimizer.lr={value} \\
 	model.lambda_gradient=1.0 \\
 	model.lambda_surface=0.0 \\
 	model.lambda_empty_space=0.0 \\
@@ -287,8 +216,223 @@ def main(cfg: DictConfig):
 	model.log_images=True \\
 	model.log_optimizer=True \\
 	model.log_mesh=True \\
+	model.encoder.activation=sin \\
 	model.activation=tanh \\
-	model.encoder.activation={value} \\
+	trainer.max_epochs=100 \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_sin_Indicator_sigmoid_lr"
+    template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.vector_field_mode=nearest_neighbor \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr={value} \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=True \\
+	model.encoder.activation=sin \\
+	model.activation=sigmoid \\
+	trainer.max_epochs=100 \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_sin_Indicator_sin_lr"
+    template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.vector_field_mode=nearest_neighbor \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr={value} \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=True \\
+	model.encoder.activation=sin \\
+	model.activation=sin \\
+	trainer.max_epochs=100 \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_gelu_Indicator_sigmoid_lr"
+    template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.vector_field_mode=nearest_neighbor \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr={value} \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=True \\
+	model.encoder.activation=gelu \\
+	model.activation=sigmoid \\
+	trainer.max_epochs=100 \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_gelu_Indicator_sin_lr"
+    template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.vector_field_mode=nearest_neighbor \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr={value} \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=True \\
+	model.encoder.activation=gelu \\
+	model.activation=sin \\
+	trainer.max_epochs=100 \\
+	scheduler=none \\
+    """
+    makefile_generator.add(template_generator, values, prefixs, group_name)
+
+    values = [
+        5e-04,
+        3e-04,
+        1e-04,
+        9e-05,
+        7e-05,
+        5e-05,
+        3e-05,
+        1e-05,
+    ]
+    prefixs = makefile_generator.convert_float_to_scientific(values)
+    group_name = "MLP_gelu_Indicator_tanh_lr"
+    template_generator = """
+  	python neural_poisson/train.py \\
+    logger.group={group_name} \\
+    logger.name={task_name} \\
+    logger.tags=[{group_name},{task_name}] \\
+    task_name={task_name} \\
+	data.epoch_size=100 \\
+	data.batch_size=50_000 \\
+	data.dataset.fov=30.0 \\
+	data.dataset.dist=2.0 \\
+	data.dataset.vector_field_mode=nearest_neighbor \\
+	data.dataset.max_surface_points=100_000 \\
+	data.dataset.max_close_points=0 \\
+	data.dataset.max_empty_points=0 \\
+	data.dataset.resolution=0.001 \\
+	data.dataset.sigma=0.001 \\
+	model.optimizer.lr={value} \\
+	model.lambda_gradient=1.0 \\
+	model.lambda_surface=0.0 \\
+	model.lambda_empty_space=0.0 \\
+	model.log_metrics=True \\
+	model.log_images=True \\
+	model.log_optimizer=True \\
+	model.log_mesh=True \\
+	model.encoder.activation=gelu \\
+	model.activation=tanh \\
 	trainer.max_epochs=100 \\
 	scheduler=none \\
     """
