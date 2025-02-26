@@ -6,7 +6,7 @@ shapenet_id: 1a04e3eab45ca15dd86060f189eb133
 data_dir: ${paths.data_dir}/ShapeNetCore/02691156/${data.shapenet_id}
 
 # training settings
-batch_size: 10_000
+batch_size: 50_000
 epoch_size: 100
 num_workers: 0
 pin_memory: False
@@ -23,7 +23,7 @@ dataset:
   dist: 2.0
   fov: 30.0
   image_size: 256
-  segments: 10
+  segments: 12
   fill_depth: max2  # "zfar", "max", "max(d)"
   # training settings
   device: ${device}

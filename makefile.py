@@ -5,10 +5,38 @@ from omegaconf import DictConfig
 
 
 class MakefileGenerator:
-    def __init__(self, suffix: str = "abl", debug_template: str | None = None):
+    def __init__(
+        self,
+        suffix: str = "abl",
+        debug_template: str | None = None,
+        default_template: str | None = None,
+        logging_template: str | None = None,
+        script: str | None = None,
+    ):
         self.suffix = suffix
         self.groups: list[Any] = []
+
+        # check if you want to create debug template
         self.debug_template = debug_template
+
+        self.default_template = ""
+        if default_template is not None:
+            self.default_template = default_template
+
+        self.logging_template = """
+        logger.group={group_name} \\
+        logger.name={task_name} \\
+        logger.tags=[{group_name},{task_name}] \\
+        task_name={task_name} \\
+        """
+        if logging_template is not None:
+            self.logging_template = logging_template
+
+        self.script = """
+        python train.py \\
+        """
+        if script is not None:
+            self.script = script
 
     @property
     def debug(self):
@@ -19,7 +47,11 @@ class MakefileGenerator:
         b += "##########################################################################\n"
         b += f"# make all -f Makefile.{self.suffix}\n"
         for i, group in enumerate(group_names):
-            b += f"# GROUP{i}: make {group} -f Makefile.{self.suffix}\n"
+            if not group.startswith("DEBUG"):
+                b += f"# GROUP{i}: make {group} -f Makefile.{self.suffix}\n"
+        for i, group in enumerate(group_names):
+            if group.startswith("DEBUG"):
+                b += f"# GROUP{i}: make {group} -f Makefile.{self.suffix}\n"
         b += "##########################################################################\n"
         return b
 
@@ -31,15 +63,26 @@ class MakefileGenerator:
         b += "\n"
         return b
 
-    def _generate_make_command(self, template_generator, value, group_name, prefix):
-        task_name = f"{group_name}__{prefix}"
-        make_command = f"{task_name}:"
-        template = template_generator.format(
+    def _generate_make_command(
+        self,
+        group: str,
+        template: str,
+        prefix: str,
+        values: dict[str, str],
+    ):
+        task_name = f"{group}__{prefix}"
+        setting_template = template.format(**values)
+        logging_template = self.logging_template.format(
             task_name=task_name,
-            value=value,
-            group_name=group_name,
+            group_name=group,
         )
-        template = make_command + template
+        template = (
+            f"{task_name}:"
+            + self.script
+            + logging_template
+            + self.default_template
+            + setting_template
+        )
         return task_name, template
 
     def convert_float_to_scientific(self, values):
@@ -47,46 +90,44 @@ class MakefileGenerator:
 
     def _add(
         self,
-        template_generator,
-        values,
-        prefixs,
-        group_name: str = "GROUP",
+        group: str,
+        template: str,
+        prefixs: list[str],
+        values: dict[str, list[str]],
     ):
         templates = []
         task_names = []
-        for value, prefix in zip(values, prefixs):
-            task_name, template = self._generate_make_command(
-                template_generator=template_generator,
-                value=value,
-                group_name=group_name,
+        for idx, prefix in enumerate(prefixs):
+            task_name, t = self._generate_make_command(
+                group=group,
+                template=template,
                 prefix=prefix,
+                values={k: v[idx] for k, v in values.items()},
             )
-            t = "\n\t".join(
-                [li.strip() for li in template.split("\n") if li and li.strip()]
-            )
+            t = "\n\t".join([li.strip() for li in t.split("\n") if li and li.strip()])
             task_names.append(task_name)
             templates.append(t)
 
-        temp = self._generate_group_banner(group_name)
+        temp = self._generate_group_banner(group)
         tasks = " ".join(task_names)
-        temp += f"\n{group_name}: {tasks}\n\n"
+        temp += f"\n{group}: {tasks}\n\n"
         temp += "\n\n".join(templates)
         temp += "\n"
 
-        self.groups.append([temp, group_name, tasks])
+        self.groups.append([temp, group, tasks])
 
     def add(
         self,
-        template_generator,
-        values,
-        prefixs,
-        group_name: str = "GROUP",
+        group: str,
+        template: str,
+        prefixs: list[str],
+        **values: list[str],
     ):
-        self._add(template_generator, values, prefixs, group_name)
+        self._add(group, template, prefixs, values)
         if self.debug:
-            group_name = f"DEBUG_{group_name}"
-            template_generator += self.debug_template
-            self._add(template_generator, values, prefixs, group_name)
+            group = f"DEBUG_{group}"
+            template += self.debug_template
+            self._add(group, template, prefixs, values)
 
     def build(self) -> None:
         templates, group_names, task_names = [], [], []
@@ -127,148 +168,71 @@ class MakefileGenerator:
 @hydra.main(version_base=None, config_path="./conf", config_name="makefile")
 def main(cfg: DictConfig):
     makefile_generator = MakefileGenerator(suffix=cfg.suffix)
+    makefile_generator.script = """
+    python neural_poisson/train.py \\
+    """
+    makefile_generator.default_template = """
+    trainer.max_epochs=200 \\
+    data.epoch_size=100 \\
+    data.batch_size=50_000 \\
+    data.dataset.vector_field_mode=nearest_neighbor \\
+    data.dataset.max_surface_points=100_000 \\
+    data.dataset.max_close_points=0 \\
+    data.dataset.max_empty_points=0 \\
+    data.dataset.resolution=0.001 \\
+    data.dataset.sigma=0.001 \\
+    model.lambda_gradient=1.0 \\
+    model.lambda_surface=0.0 \\
+    model.lambda_empty_space=0.0 \\
+    model.log_metrics=True \\
+    model.log_images=True \\
+    model.log_optimizer=True \\
+    model.log_mesh=True \\
+    model.optimizer.lr=5e-05 \\
+    model.activation=sigmoid \\
+    encoder/activation=siren \\
+    scheduler=none \\
+    """
     makefile_generator.debug_template = """
     trainer.max_epochs=10 \\
     data.epoch_size=1 \\
-    data.dataset.vector_field_mode=nearest_neighbor \\
+    data.batch_size=1_000 \\
+    data.dataset.segments=4 \\
     data.dataset.image_size=128 \\
     data.dataset.resolution=0.05 \\
-    data.dataset.segments=4 \\
-    callbacks.model_checkpoint.every_n_epochs=5 \\
+    data.dataset.log_camera_idxs=[0] \\
+    model.log_mesh=False \\
+    callbacks.model_checkpoint.every_n_epochs=10 \\
     """
+    value: Any = None
 
-    # values = [
-    #     5e-04,
-    #     3e-04,
-    #     1e-04,
-    #     9e-05,
-    #     7e-05,
-    #     5e-05,
-    #     3e-05,
-    #     1e-05,
-    # ]
-    # prefixs = makefile_generator.convert_float_to_scientific(values)
-    # group_name = "MLP_tanh_Indicator_sigmoid_lr"
-    # template_generator = """
-    # python neural_poisson/train.py \\
-    # logger.group={group_name} \\
-    # logger.name={task_name} \\
-    # logger.tags=[{group_name},{task_name}] \\
-    # task_name={task_name} \\
-    # data.epoch_size=100 \\
-    # data.batch_size=50_000 \\
-    # data.dataset.fov=30.0 \\
-    # data.dataset.dist=2.0 \\
-    # data.dataset.vector_field_mode=nearest_neighbor \\
-    # data.dataset.max_surface_points=100_000 \\
-    # data.dataset.max_close_points=0 \\
-    # data.dataset.max_empty_points=0 \\
-    # data.dataset.resolution=0.001 \\
-    # data.dataset.sigma=0.001 \\
-    # model.optimizer.lr={value} \\
-    # model.lambda_gradient=1.0 \\
-    # model.lambda_surface=0.0 \\
-    # model.lambda_empty_space=0.0 \\
-    # model.log_metrics=True \\
-    # model.log_images=True \\
-    # model.log_optimizer=True \\
-    # model.log_mesh=True \\
-    # model.encoder.activation=tanh \\
-    # model.activation=sigmoid \\
-    # trainer.max_epochs=100 \\
-    # scheduler=none \\
-    # """
-    # makefile_generator.add(template_generator, values, prefixs, group_name)
+    group = "surface_objective"
+    value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = "model.lambda_surface={value}"
+    makefile_generator.add(group, template, prefix, value=value)
 
-    # values = [
-    #     5e-04,
-    #     3e-04,
-    #     1e-04,
-    #     9e-05,
-    #     7e-05,
-    #     5e-05,
-    #     3e-05,
-    #     1e-05,
-    # ]
-    # prefixs = makefile_generator.convert_float_to_scientific(values)
-    # group_name = "MLP_sin_Indicator_tanh_lr"
-    # template_generator = """
-    # python neural_poisson/train.py \\
-    # logger.group={group_name} \\
-    # logger.name={task_name} \\
-    # logger.tags=[{group_name},{task_name}] \\
-    # task_name={task_name} \\
-    # data.epoch_size=100 \\
-    # data.batch_size=50_000 \\
-    # data.dataset.fov=30.0 \\
-    # data.dataset.dist=2.0 \\
-    # data.dataset.vector_field_mode=nearest_neighbor \\
-    # data.dataset.max_surface_points=100_000 \\
-    # data.dataset.max_close_points=0 \\
-    # data.dataset.max_empty_points=0 \\
-    # data.dataset.resolution=0.001 \\
-    # data.dataset.sigma=0.001 \\
-    # model.optimizer.lr={value} \\
-    # model.lambda_gradient=1.0 \\
-    # model.lambda_surface=0.0 \\
-    # model.lambda_empty_space=0.0 \\
-    # model.log_metrics=True \\
-    # model.log_images=True \\
-    # model.log_optimizer=True \\
-    # model.log_mesh=True \\
-    # model.encoder.activation=sin \\
-    # model.activation=tanh \\
-    # trainer.max_epochs=100 \\
-    # scheduler=none \\
-    # """
-    # makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = [
-        # 5e-04,
-        # 3e-04,
-        # 1e-04,
-        # 9e-05,
-        7e-05,
-        5e-05,
-        3e-05,
-        1e-05,
-    ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "MLP_sin_Indicator_sigmoid_lr"
-    template_generator = """
-  	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr={value} \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.encoder.activation=sin \\
-	model.activation=sigmoid \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
+    group = "empty_objective"
+    value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = """
+    model.lambda_empty_space={value} \\
+    data.dataset.max_empty_points=100_000 \\
     """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
+    makefile_generator.add(group, template, prefix, value=value)
 
-    values = [
-        5e-04,
-        3e-04,
+    group = "empty_surface_objective"
+    value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = """
+    model.lambda_surface={value} \\
+    model.lambda_empty_space={value} \\
+    data.dataset.max_empty_points=100_000 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
+
+    group = "only_empty_surface_objective_learning_rate"
+    value = [
         1e-04,
         9e-05,
         7e-05,
@@ -276,42 +240,22 @@ def main(cfg: DictConfig):
         3e-05,
         1e-05,
     ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "MLP_sin_Indicator_sin_lr"
-    template_generator = """
-  	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr={value} \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.encoder.activation=sin \\
-	model.activation=sin \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = """
+    model.lambda_gradient=0.0 \\
+    model.lambda_surface={value} \\
+    model.lambda_empty_space={value} \\
+    data.dataset.max_empty_points=100_000 \\
     """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
+    makefile_generator.add(group, template, prefix, value=value)
 
-    values = [
-        5e-04,
-        3e-04,
+    group = "activation"
+    value = ["tanh", "sinus", "cosine", "siren", "gelu", "relu"]
+    prefix = value
+    template = "encoder/activation={value}"
+    makefile_generator.add(group, template, prefix, value=value)
+
+    value = [
         1e-04,
         9e-05,
         7e-05,
@@ -319,124 +263,12 @@ def main(cfg: DictConfig):
         3e-05,
         1e-05,
     ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "MLP_gelu_Indicator_sigmoid_lr"
-    template_generator = """
-  	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr={value} \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.encoder.activation=gelu \\
-	model.activation=sigmoid \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = [
-        5e-04,
-        3e-04,
-        1e-04,
-        9e-05,
-        7e-05,
-        5e-05,
-        3e-05,
-        1e-05,
-    ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "MLP_gelu_Indicator_sin_lr"
-    template_generator = """
-  	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr={value} \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.encoder.activation=gelu \\
-	model.activation=sin \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
-
-    values = [
-        5e-04,
-        3e-04,
-        1e-04,
-        9e-05,
-        7e-05,
-        5e-05,
-        3e-05,
-        1e-05,
-    ]
-    prefixs = makefile_generator.convert_float_to_scientific(values)
-    group_name = "MLP_gelu_Indicator_tanh_lr"
-    template_generator = """
-  	python neural_poisson/train.py \\
-    logger.group={group_name} \\
-    logger.name={task_name} \\
-    logger.tags=[{group_name},{task_name}] \\
-    task_name={task_name} \\
-	data.epoch_size=100 \\
-	data.batch_size=50_000 \\
-	data.dataset.fov=30.0 \\
-	data.dataset.dist=2.0 \\
-	data.dataset.vector_field_mode=nearest_neighbor \\
-	data.dataset.max_surface_points=100_000 \\
-	data.dataset.max_close_points=0 \\
-	data.dataset.max_empty_points=0 \\
-	data.dataset.resolution=0.001 \\
-	data.dataset.sigma=0.001 \\
-	model.optimizer.lr={value} \\
-	model.lambda_gradient=1.0 \\
-	model.lambda_surface=0.0 \\
-	model.lambda_empty_space=0.0 \\
-	model.log_metrics=True \\
-	model.log_images=True \\
-	model.log_optimizer=True \\
-	model.log_mesh=True \\
-	model.encoder.activation=gelu \\
-	model.activation=tanh \\
-	trainer.max_epochs=100 \\
-	scheduler=none \\
-    """
-    makefile_generator.add(template_generator, values, prefixs, group_name)
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    for scheduler in ["none", "linear", "exponential"]:
+        group = f"siren_learning_rate_{scheduler}"
+        template = "model.optimizer.lr={value} \\"
+        template += f"\nscheduler={scheduler} \\"
+        makefile_generator.add(group, template, prefix, value=value)
 
     makefile_generator.build()
 
