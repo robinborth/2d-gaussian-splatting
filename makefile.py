@@ -209,7 +209,7 @@ def main(cfg: DictConfig):
     group = "surface_objective"
     value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
     prefix = makefile_generator.convert_float_to_scientific(value)
-    template = "model.lambda_surface={value}"
+    template = "model.lambda_surface={value} \\"
     makefile_generator.add(group, template, prefix, value=value)
 
     group = "empty_objective"
@@ -252,7 +252,7 @@ def main(cfg: DictConfig):
     group = "activation"
     value = ["tanh", "sinus", "cosine", "siren", "gelu", "relu"]
     prefix = value
-    template = "encoder/activation={value}"
+    template = "encoder/activation={value} \\"
     makefile_generator.add(group, template, prefix, value=value)
 
     value = [
