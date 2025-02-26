@@ -45,7 +45,7 @@ class SirenActivation(BaseActivation):
         if not hasattr(m, "weight"):
             return
         num_input = m.weight.size(-1)
-        U = np.sqrt(6 / num_input) * self.w
+        U = np.sqrt(6 / num_input) / self.w
         m.weight.uniform_(-U, U)
 
     @torch.no_grad()
