@@ -95,7 +95,10 @@ class ShapeNetCoreDataset(Dataset):
         chunk_threshold: float = 30,
         # logging settings
         log_camera_idxs: list[int] = [0],
+        log_time: bool = False,
+        verbose: bool = True,
     ):
+        self.verbose = verbose
         self.start_log(f"==> initializing dataset <{self}> ...")
         self.device = device
         self.segments = segments
@@ -108,6 +111,7 @@ class ShapeNetCoreDataset(Dataset):
         self.resolution = resolution
         self.log_camera_idxs = log_camera_idxs
         self.fill_depth = fill_depth
+        self.log_time = log_time
 
         self.start_log(f"\t-> loading mesh from {path} ...")
         self.mesh = load_mesh(path, device=device)
@@ -232,11 +236,13 @@ class ShapeNetCoreDataset(Dataset):
 
     def start_log(self, msg: str):
         self.start_time = time.time()
-        log.info(msg)
+        if self.verbose:
+            log.info(msg)
 
     def finish_log(self):
         duration = (time.time() - self.start_time) * 1000
-        log.info(f"\t-> time taken {duration:.4f} ms")
+        if self.verbose and self.log_time:
+            log.info(f"\t-> time taken {duration:.4f} ms")
 
     ################################################################################
     # Predefined Visualizations

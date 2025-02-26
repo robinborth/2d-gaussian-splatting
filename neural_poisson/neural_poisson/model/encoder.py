@@ -12,47 +12,44 @@ import torch.nn as nn
 
 
 class BaseActivation(nn.Module):
-    @classmethod
-    def get_name(cls):
-        return cls.__name__.replace("Activation", "").lower()
+    @property
+    def name(self):
+        return self.__class__.__name__.replace("Activation", "").lower()
 
-    @classmethod
     @torch.no_grad()
-    def weight_init(cls, m: nn.Module):
+    def weight_init(self, m: nn.Module):
         return None
 
-    @classmethod
     @torch.no_grad()
-    def first_layer_weight_init(cls, m: nn.Module):
+    def first_layer_weight_init(self, m: nn.Module):
         return None
 
 
 class CosineActivation(BaseActivation):
-    def __init__(self, w: float = 1.0):
-        super().__init__()
-        self.w = w
-
     def forward(self, x):
-        return torch.cos(self.w * x)
+        return torch.cos(x)
 
 
 class SinusActivation(BaseActivation):
+    def forward(self, x):
+        return torch.cos(x)
+
+
+class SirenActivation(BaseActivation):
     def __init__(self, w: float = 30.0):
         super().__init__()
         self.w = w
 
-    @classmethod
     @torch.no_grad()
-    def weight_init(cls, m: nn.Module):
+    def weight_init(self, m: nn.Module):
         if not hasattr(m, "weight"):
             return
         num_input = m.weight.size(-1)
-        U = np.sqrt(6 / num_input) / 30
+        U = np.sqrt(6 / num_input) * self.w
         m.weight.uniform_(-U, U)
 
-    @classmethod
     @torch.no_grad()
-    def first_layer_weight_init(cls, m: nn.Module):
+    def first_layer_weight_init(self, m: nn.Module):
         if not hasattr(m, "weight"):
             return
         num_input = m.weight.size(-1)
@@ -93,10 +90,8 @@ class MLP(nn.Sequential):
         weight_init: Callable | None = None,
         first_layer_weight_init: Callable | None = None,
     ):
-        # extract the name of the activation
-        activation_cls = activation
-        if isinstance(activation, partial):
-            activation_cls = activation.func
+        # compute the base activation for init and name
+        activation_cls = activation()
 
         layers: list[Any] = []
         names: list[str] = []
@@ -105,21 +100,21 @@ class MLP(nn.Sequential):
         layers.append(nn.Linear(in_features, hidden_features))
         names.append("layer_0")
         layers.append(activation())
-        names.append(f"{activation_cls.get_name()}_0")
+        names.append(f"{activation_cls.name}_0")
 
         # hidden layers
         for i in range(num_hidden_layers):
             layers.append(nn.Linear(hidden_features, hidden_features))
             names.append(f"layer_{i+1}")
             layers.append(activation())
-            names.append(f"{activation_cls.get_name()}_{i+1}")
+            names.append(f"{activation_cls.name}_{i+1}")
 
         # output layer
         layers.append(nn.Linear(hidden_features, out_features, bias=out_bias))
         names.append(f"layer_{i+2}")
         if out_activation:
             layers.append(activation())
-            names.append(f"{activation_cls.get_name()}_{i+2}")
+            names.append(f"{activation_cls.name}_{i+2}")
 
         # initilize the mlp with the layers
         ordered_dict = OrderedDict(zip(names, layers))

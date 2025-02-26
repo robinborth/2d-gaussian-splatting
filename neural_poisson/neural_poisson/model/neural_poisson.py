@@ -1,14 +1,17 @@
 import time
+from collections import defaultdict
+from pathlib import Path
 
 import lightning as L
 import torch
 import torch.nn as nn
+import wandb
+from pytorch3d.io import save_obj
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops.marching_cubes import marching_cubes
 from pytorch3d.structures import Meshes
 
-import wandb
 from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
 from neural_poisson.data.prepare import extract_surface_data
 
@@ -31,7 +34,7 @@ class NeuralPoisson(L.LightningModule):
         indicator_steps: int = 100,
         # indicator settings
         indicator_function: str = "default",  # "default", "center"
-        activation: str = "sin",  # sin, sigmoid, tanh
+        activation: str = "sinus",  # sin, sigmoid, tanh
         # logging
         log_camera_idxs: list[int] = [0],
         log_metrics: bool = True,
@@ -57,7 +60,7 @@ class NeuralPoisson(L.LightningModule):
         self.save_hyperparameters(logger=False)
 
         # check for valid values
-        assert activation in ["sin", "sigmoid", "tanh"]
+        assert activation in ["sinus", "sigmoid", "tanh"]
         assert indicator_function in ["default", "center"]
 
         # for default: [0,1]; for center: [-0.5, 0.5]
@@ -141,7 +144,7 @@ class NeuralPoisson(L.LightningModule):
             log_epochs = self.hparams[f"log_{mode}_every_n_epochs"]
             return (
                 self.trainer.current_epoch % log_epochs == 0
-                and batch_idx == 0
+                and batch_idx == (self.trainer.num_training_batches - 1)
                 and self.hparams[f"log_{mode}"]
             )
         return (
@@ -192,7 +195,7 @@ class NeuralPoisson(L.LightningModule):
         # perform the logging
         self.log_dict(unified_output, prog_bar=False)
 
-    def logging_images(self, batch: dict, output: dict, mode: str = "train"):
+    def logging_images(self, batch: dict, mode: str = "train"):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map, _ = self.forward(points=point_map)
@@ -253,9 +256,17 @@ class NeuralPoisson(L.LightningModule):
         loss, _ = chamfer_distance(p1, p2)
         self.log(f"Metrics ({mode})/chamfer", loss, prog_bar=False)
 
+        # save the mesh
+        file_name = f"epoch_{self.trainer.current_epoch:05}.obj"
+        path = Path(self.trainer.default_root_dir) / f"mesh/{file_name}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        save_obj(path, mesh.verts_packed(), mesh.faces_packed())
+
         # log the mesh for the entire camera logs
         dataset = self.trainer.datamodule.dataset  # type: ignore
         for camera_idx in dataset.log_camera_idxs:
+            normal_map = dataset.normal_maps[camera_idx].detach().cpu().numpy()
+            indicator_map = dataset.indicator_maps[camera_idx].detach().cpu().numpy()
             data = extract_surface_data(
                 camera=dataset.cameras[camera_idx],
                 mesh=mesh,
@@ -265,9 +276,9 @@ class NeuralPoisson(L.LightningModule):
             # log mesh images
             name = f"Mesh-{camera_idx:03} ({mode})"
             img_N = wandb.Image(data["normal_map"].detach().cpu().numpy())
-            img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
             img_X = wandb.Image(data["indicator_map"].detach().cpu().numpy())
-            img_X_gt = wandb.Image(batch["indicator_map"].detach().cpu().numpy())
+            img_N_gt = wandb.Image(normal_map)
+            img_X_gt = wandb.Image(indicator_map)
             self.logger.log_image(f"{name}/normal", [img_N])  # type: ignore
             self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
             self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
@@ -325,7 +336,7 @@ class NeuralPoisson(L.LightningModule):
             x, _ = self.forward(points.to(self.device))
             # convert indicator to "sdf" value, where negative is inside
             sdfs.append(-x.detach().cpu())
-        sdf_grid = -torch.cat(sdfs).reshape(N, N, N)
+        sdf_grid = torch.cat(sdfs).reshape(N, N, N)
 
         # log the slice of the mesh
         # for dim in ["x", "y", "z"]:
@@ -337,7 +348,10 @@ class NeuralPoisson(L.LightningModule):
             isolevel = (sdf_grid.max().item() - sdf_grid.min().item()) / 2
 
         # perform marching cubes
-        verts, faces = marching_cubes(sdf_grid[None], isolevel=isolevel)
+        sdf_grid = sdf_grid.permute(2, 1, 0)[None]  # (W,H,D) -> (1,D,H,W)
+        verts, faces = marching_cubes(sdf_grid, isolevel=isolevel)
+
+        # wrap into a pytorch3d mesh
         if not len(verts[0]):
             return None
         return Meshes(verts=verts, faces=faces).to(self.device)
@@ -365,7 +379,7 @@ class NeuralPoisson(L.LightningModule):
         logits = x.squeeze(-1)  # (P,)
 
         # transforms into indicator function
-        if self.hparams["activation"] == "sin":
+        if self.hparams["activation"] == "sinus":
             X = (torch.sin(logits) + 1) / 2  # [0, 1]
         elif self.hparams["activation"] == "sigmoid":
             X = torch.sigmoid(logits)  # [0, 1]
@@ -490,7 +504,7 @@ class NeuralPoisson(L.LightningModule):
         if self.check_logging("metrics", batch_idx):
             self.logging_metrics(batch, output, "train")
         if self.check_logging("images", batch_idx):
-            self.logging_images(batch, output, "train")
+            self.logging_images(batch, "train")
         if self.check_logging("optimizer", batch_idx):
             self.logging_optimizer("train")
         if self.check_logging("mesh", batch_idx):

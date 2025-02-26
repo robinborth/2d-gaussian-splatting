@@ -102,7 +102,28 @@ def cdist(x: torch.Tensor, y: torch.Tensor):
 
 
 def load_mesh(path: str, device: str = "cuda"):
-    return load_objs_as_meshes([path], device=device)
+    return load_objs_as_meshes([path], device=device, load_textures=False)
+
+
+def load_mesh_o3d(path: str):
+    mesh = load_mesh(path)
+    return to_mesh_o3d(mesh)
+
+
+def to_pcd_o3d(points: torch.Tensor, normals: torch.Tensor | None = None):
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points.detach().cpu().numpy())
+    if normals is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normals.detach().cpu().numpy())
+    return pcd
+
+
+def to_mesh_o3d(mesh: Meshes):
+    m = o3d.geometry.TriangleMesh()
+    m.vertices = o3d.utility.Vector3dVector(mesh.verts_packed().cpu().numpy())
+    m.triangles = o3d.utility.Vector3iVector(mesh.faces_packed().cpu().numpy())
+    m.compute_vertex_normals()
+    return m
 
 
 ################################################################################
