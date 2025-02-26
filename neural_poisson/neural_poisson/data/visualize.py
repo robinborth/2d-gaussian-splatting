@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 import torch
 
+from neural_poisson.data.prepare import to_pcd_o3d
+
 
 def plot_camera_grid(images: list, figsize: int = 6):
     grid_size = int(math.sqrt(len(images)))
@@ -29,8 +31,5 @@ def plot_normal_maps(data: list, cameras: list, camera_space: bool = False):
 
 
 def visualize_point_cloud(points: torch.Tensor, normals: torch.Tensor | None = None):
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points.detach().cpu().numpy())
-    if normals is not None:
-        pcd.normals = o3d.utility.Vector3dVector(normals.detach().cpu().numpy())
+    pcd = to_pcd_o3d(points=points, normals=normals)
     o3d.visualization.draw_plotly([pcd])
