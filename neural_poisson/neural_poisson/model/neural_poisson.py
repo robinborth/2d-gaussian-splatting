@@ -1,16 +1,17 @@
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import lightning as L
 import torch
 import torch.nn as nn
+import wandb
 from pytorch3d.io import save_obj
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops.marching_cubes import marching_cubes
 from pytorch3d.structures import Meshes
 
-import wandb
 from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
 from neural_poisson.data.prepare import extract_surface_data
 
@@ -33,7 +34,7 @@ class NeuralPoisson(L.LightningModule):
         indicator_steps: int = 100,
         # indicator settings
         indicator_function: str = "default",  # "default", "center"
-        activation: str = "sin",  # sin, sigmoid, tanh
+        activation: str = "sinus",  # sin, sigmoid, tanh
         # logging
         log_camera_idxs: list[int] = [0],
         log_metrics: bool = True,
@@ -59,7 +60,7 @@ class NeuralPoisson(L.LightningModule):
         self.save_hyperparameters(logger=False)
 
         # check for valid values
-        assert activation in ["sin", "sigmoid", "tanh"]
+        assert activation in ["sinus", "sigmoid", "tanh"]
         assert indicator_function in ["default", "center"]
 
         # for default: [0,1]; for center: [-0.5, 0.5]
@@ -378,7 +379,7 @@ class NeuralPoisson(L.LightningModule):
         logits = x.squeeze(-1)  # (P,)
 
         # transforms into indicator function
-        if self.hparams["activation"] == "sin":
+        if self.hparams["activation"] == "sinus":
             X = (torch.sin(logits) + 1) / 2  # [0, 1]
         elif self.hparams["activation"] == "sigmoid":
             X = torch.sigmoid(logits)  # [0, 1]
