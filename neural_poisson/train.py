@@ -37,4 +37,7 @@ def train(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    train()
+    try:
+        train()
+    except Exception as e:
+        pass
