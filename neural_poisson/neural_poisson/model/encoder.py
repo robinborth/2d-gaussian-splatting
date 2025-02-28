@@ -68,15 +68,41 @@ class SirenActivation(BaseActivation):
 
 
 class ReLUActivation(BaseActivation, nn.ReLU):
-    pass
+    def __init__(self, weight_init: bool = True):
+        super().__init__()
+        self._weight_init = weight_init
+
+    @torch.no_grad()
+    def weight_init(self, m: nn.Module):
+        if not hasattr(m, "weight") or not self._weight_init:
+            return None
+        nn.init.kaiming_normal_(m.weight, a=0.0, nonlinearity="relu", mode="fan_in")
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
 
 
 class TanhActivation(BaseActivation, nn.Tanh):
-    pass
+    def __init__(self, weight_init: bool = True):
+        super().__init__()
+        self._weight_init = weight_init
+
+    @torch.no_grad()
+    def weight_init(self, m: nn.Module):
+        if not hasattr(m, "weight") or not self._weight_init:
+            return None
+        nn.init.xavier_normal_(m.weight)
 
 
 class GELUActivation(BaseActivation, nn.GELU):
-    pass
+    def __init__(self, weight_init: bool = True):
+        super().__init__()
+        self._weight_init = weight_init
+
+    @torch.no_grad()
+    def weight_init(self, m: nn.Module):
+        if not hasattr(m, "weight") or not self._weight_init:
+            return None
+        nn.init.xavier_normal_(m.weight)
 
 
 ################################################################################

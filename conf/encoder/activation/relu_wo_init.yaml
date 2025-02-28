@@ -2,4 +2,4 @@
 
 _target_: neural_poisson.model.encoder.ReLUActivation
 _partial_: True
-weight_init: True
+weight_init: False 
