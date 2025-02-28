@@ -3,6 +3,7 @@
 defaults:
   - model: neural_poisson 
   - encoder: mlp
+  - encoder/activation: siren 
   - optimizer: adam
   - scheduler: linear
   - logger: wandb

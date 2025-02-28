@@ -2,6 +2,6 @@
 
 _target_: neural_poisson.model.encoder.SirenActivation
 _partial_: True
-w: 30.0
+w: 1.0
 weight_init: True
 first_layer_weight_init: True

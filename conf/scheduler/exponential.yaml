@@ -4,4 +4,4 @@ monitor: train/loss
 scheduler:
   _partial_: True
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 0.98
+  gamma: 0.95

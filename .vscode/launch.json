@@ -88,5 +88,14 @@
             "console": "integratedTerminal",
             "justMyCode": false,
         },
+        {
+            "name": "Debug: Makefile",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "makefile.py",
+            "args": [],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
     ]
 }
