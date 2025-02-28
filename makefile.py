@@ -172,26 +172,28 @@ def main(cfg: DictConfig):
     python neural_poisson/train.py \\
     """
     makefile_generator.default_template = """
-    trainer.max_epochs=200 \\
+    trainer.max_epochs=50 \\
     data.epoch_size=100 \\
     data.batch_size=50_000 \\
-    data.dataset.vector_field_mode=nearest_neighbor \\
+    data.dataset.vector_field_mode=k_nearest_neighbors \\
+    data.dataset.k=10 \\
     data.dataset.max_surface_points=100_000 \\
     data.dataset.max_close_points=0 \\
-    data.dataset.max_empty_points=100_000 \\
+    data.dataset.max_empty_points=0 \\
     data.dataset.resolution=0.001 \\
     data.dataset.sigma=0.001 \\
     model.lambda_gradient=1.0 \\
-    model.lambda_surface=5e-03 \\
-    model.lambda_empty_space=5e-03 \\
+    model.lambda_surface=0.0 \\
+    model.lambda_empty_space=0.0 \\
     model.log_metrics=True \\
     model.log_images=True \\
     model.log_optimizer=True \\
     model.log_mesh=True \\
-    model.optimizer.lr=5e-05 \\
+    model.optimizer.lr=1e-04 \\
     model.activation=sigmoid \\
     encoder/activation=siren \\
-    scheduler=linear \\
+    scheduler=exponential \\
+    model.scheduler.gamma=0.99 \\
     """
     makefile_generator.debug_template = """
     trainer.max_epochs=10 \\
@@ -206,36 +208,48 @@ def main(cfg: DictConfig):
     """
     value: Any = None
 
-    value = [
-        1e-04,
-        9e-05,
-        7e-05,
-        5e-05,
-    ]
-    group = "empty_surface_siren_learning_rate_linear_1000"
+    # group = "grad"
+    # value = [0, 100_000]
+    # prefix = ["surface", "full"]
+    # template = """
+    # data.dataset.max_surface_points=100_000 \\
+    # data.dataset.max_close_points={value} \\
+    # data.dataset.max_empty_points={value} \\
+    # """
+    # makefile_generator.add(group, template, prefix, value=value)
+
+    # 0.00390625 -> 256 voxel size
+    group = "full_loss_voxel256"
+    value = [0.0, 1e-02, 5e-03]
     prefix = makefile_generator.convert_float_to_scientific(value)
     template = """
-    trainer.max_epochs=1000 \\
-    model.optimizer.lr={value} \\
+    data.dataset.resolution=0.00390625 \\
+    data.dataset.sigma=0.00390625 \\
+    data.dataset.max_surface_points=100_000 \\
+    data.dataset.max_close_points=100_000 \\
+    data.dataset.max_empty_points=100_000 \\
+    model.lambda_surface={value} \\
+    model.lambda_empty_space={value} \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "max_empty_points"
-    value = [100_000, 200_000, 500_000]
-    prefix = makefile_generator.convert_float_to_scientific(value)
-    template = """
-    data.dataset.max_empty_points={value} \\
-    """
-    makefile_generator.add(group, template, prefix, value=value)
+    # group = "close_points"
+    # value = [0, 100_000]
+    # prefix = makefile_generator.convert_float_to_scientific(value)
+    # template = """
+    # data.dataset.max_close_points={value} \\
+    # data.dataset.vector_field_mode=k_nearest_neighbors \\
+    # data.dataset.k=10 \\
+    # """
+    # makefile_generator.add(group, template, prefix, value=value)
 
-    group = "resolution"
-    value = [5e-02, 1e-02, 5e-03, 1e-03, 1e-04]
-    prefix = makefile_generator.convert_float_to_scientific(value)
-    template = """
-    data.dataset.resolution=0.001 \\
-    data.dataset.max_surface_points=500_000 \\
-    """
-    makefile_generator.add(group, template, prefix, value=value)
+    # group = "max_empty_points"
+    # value = [0, 100_000, 200_000, 500_000]
+    # prefix = makefile_generator.convert_float_to_scientific(value)
+    # template = """
+    # data.dataset.max_empty_points={value} \\
+    # """
+    # makefile_generator.add(group, template, prefix, value=value)
 
     # group = "surface_objective"
     # value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
@@ -278,12 +292,6 @@ def main(cfg: DictConfig):
     # model.lambda_empty_space={value} \\
     # data.dataset.max_empty_points=100_000 \\
     # """
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # group = "activation"
-    # value = ["tanh", "sinus", "cosine", "siren", "gelu", "relu"]
-    # prefix = value
-    # template = "encoder/activation={value} \\"
     # makefile_generator.add(group, template, prefix, value=value)
 
     makefile_generator.build()

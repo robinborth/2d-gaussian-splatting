@@ -184,6 +184,7 @@ class ShapeNetCoreDataset(Dataset):
         self.start_log("\t-> evaluate the vector field ...")
         self.vectors_surface = self.vector_fn(query=points_surface)
         self.vectors_close = self.vector_fn(query=points_close)
+        self.vectors_empty = self.vector_fn(query=points_empty)
         self.finish_log()
 
         self.start_log("\t-> evaluate the camera vector maps ...")
@@ -206,16 +207,17 @@ class ShapeNetCoreDataset(Dataset):
             chunk_size=int(self.chunk_size * self.close_chunk_factor),
             values=[self.points_close, self.vectors_close],
         )
-        points_empty_chunk = compute_chunks(
+        points_empty_chunk, vectors_empty_chunk = compute_chunks(
             num_chunks=self.num_chunks,
             chunk_size=int(self.chunk_size * self.empty_chunk_factor),
-            values=[self.points_empty],
+            values=[self.points_empty, self.vectors_empty],
         )
         self.chunks["points_surface"] = points_surface_chunk
         self.chunks["vectors_surface"] = vectors_surface_chunk
         self.chunks["points_close"] = points_close_chunk
         self.chunks["vectors_close"] = vectors_close_chunk
         self.chunks["points_empty"] = points_empty_chunk
+        self.chunks["vectors_empty"] = vectors_empty_chunk
         self.finish_log()
 
     ################################################################################
@@ -284,6 +286,7 @@ class ShapeNetCoreDataset(Dataset):
             "points_empty": self.chunks["points_empty"][idx].detach().clone(),
             "vectors_surface": self.chunks["vectors_surface"][idx].detach().clone(),
             "vectors_close": self.chunks["vectors_close"][idx].detach().clone(),
+            "vectors_empty": self.chunks["vectors_empty"][idx].detach().clone(),
             # camera information
             "camera_idx": camera_idx,
             "camera": self.cameras[camera_idx],

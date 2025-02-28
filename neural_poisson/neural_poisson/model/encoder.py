@@ -36,22 +36,29 @@ class SinusActivation(BaseActivation):
 
 
 class SirenActivation(BaseActivation):
-    def __init__(self, w: float = 30.0):
+    def __init__(
+        self,
+        w: float = 30.0,
+        weight_init: bool = True,
+        first_layer_weight_init: bool = True,
+    ):
         super().__init__()
         self.w = w
+        self._weight_init = weight_init
+        self._first_layer_weight_init = first_layer_weight_init
 
     @torch.no_grad()
     def weight_init(self, m: nn.Module):
-        if not hasattr(m, "weight"):
-            return
+        if not hasattr(m, "weight") or not self._weight_init:
+            return None
         num_input = m.weight.size(-1)
         U = np.sqrt(6 / num_input) / self.w
         m.weight.uniform_(-U, U)
 
     @torch.no_grad()
     def first_layer_weight_init(self, m: nn.Module):
-        if not hasattr(m, "weight"):
-            return
+        if not hasattr(m, "weight") or not self._first_layer_weight_init:
+            return None
         num_input = m.weight.size(-1)
         U = 1 / num_input
         m.weight.uniform_(-U, U)

@@ -397,9 +397,10 @@ class NeuralPoisson(L.LightningModule):
         # extract the batch information
         p_surface = batch["points_surface"].requires_grad_(True)
         p_close = batch["points_close"].requires_grad_(True)
-        p_empty = batch["points_empty"]
+        p_empty = batch["points_empty"].requires_grad_(True)
         v_surface = batch["vectors_surface"]
         v_close = batch["vectors_close"]
+        v_empty = batch["vectors_empty"]
 
         # evaluate the indicator function
         time_X = time.time()
@@ -422,9 +423,11 @@ class NeuralPoisson(L.LightningModule):
         time_dX = time.time()
         dX_surface = torch.tensor([])
         dX_close = torch.tensor([])
+        dX_empty = torch.tensor([])
         if self.hparams["lambda_gradient"]:
             dX_surface = self.compute_gradient(x_surface, p_surface)
             dX_close = self.compute_gradient(x_close, p_close)
+            dX_empty = self.compute_gradient(x_empty, p_empty)
         time_dX = time.time() - time_dX
 
         # surface constraint
@@ -448,11 +451,18 @@ class NeuralPoisson(L.LightningModule):
         L_gradient = 0.0
         L_gradient_surface = 0.0
         L_gradient_close = 0.0
+        L_gradient_empty = 0.0
         if self.hparams["lambda_gradient"]:
+            step = self.scheduler_step("gradient")
             L_gradient_surface = self.l2_loss(dX_surface - v_surface)
             L_gradient_close = self.l2_loss(dX_close - v_close)
-            gradient_input = torch.cat([dX_surface - v_surface, dX_close - v_close])
-            L_gradient = self.l2_loss(gradient_input) * self.scheduler_step("gradient")
+            L_gradient_empty = self.l2_loss(dX_empty - v_empty)
+            gradient_input = [
+                dX_surface - v_surface,
+                dX_close - v_close,
+                dX_empty - v_empty,
+            ]
+            L_gradient = self.l2_loss(torch.cat(gradient_input)) * step
 
         # total loss computation
         loss = (
@@ -465,8 +475,10 @@ class NeuralPoisson(L.LightningModule):
         stats = {}
         stats.update(self.compute_basic_stats(dX_surface, "dX_surface"))
         stats.update(self.compute_basic_stats(dX_close, "dX_close"))
+        stats.update(self.compute_basic_stats(dX_empty, "dX_empty"))
         stats.update(self.compute_basic_stats(v_surface, "v_surface"))
         stats.update(self.compute_basic_stats(v_close, "v_close"))
+        stats.update(self.compute_basic_stats(v_empty, "v_empty"))
 
         # prepare output dict
         output = {
@@ -479,6 +491,7 @@ class NeuralPoisson(L.LightningModule):
                 "gradient": L_gradient,
                 "gradient_surface": L_gradient_surface,
                 "gradient_close": L_gradient_close,
+                "gradient_empty": L_gradient_empty,
                 "logit_surface": logit_surface,
                 "logit_close": logit_close,
                 "logit_empty": logit_empty,
@@ -510,3 +523,10 @@ class NeuralPoisson(L.LightningModule):
         if self.check_logging("mesh", batch_idx):
             self.logging_mesh(batch, "train")
         return output["total_loss"]
+
+    # def validation_step(self, batch: dict, batch_idx: int):
+    #     """Perform training step."""
+    #     output = self.model_step(batch)
+    #     if self.check_logging("metrics", batch_idx):
+    #         self.logging_metrics(batch, output, "val")
+    #     return output["total_loss"]
