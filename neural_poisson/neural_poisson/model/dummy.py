@@ -18,14 +18,7 @@ class DummyModel(L.LightningModule):
         x, y = batch
         y_hat = self.forward(x)
         loss = F.mse_loss(y_hat, y)
-        self.log(
-            "train/loss",
-            loss,
-            # on_epoch=True,
-            # on_step=True,
-            # logger=True,
-            # prog_bar=True,
-        )
+        self.log("train/loss", loss)
         return loss
 
     def configure_optimizers(self):
