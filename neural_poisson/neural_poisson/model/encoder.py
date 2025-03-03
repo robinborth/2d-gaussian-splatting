@@ -331,3 +331,146 @@ class DenseGridEncoding(nn.Module):
         # interplate along the cube grid of dim (P, D)
         emb = self.trilinear_interpolation(points=x, Q_pos=grid_pos, Q_emb=grid_emb)
         return emb  # (P, D)
+
+
+class HashGridEncoding(nn.Module):
+    def __init__(
+        self,
+        L: int = 10,
+        T: int = 16384,  # 2^14 to 2^24
+        F: int = 2,
+        N_min: int = 16,
+        N_max: int = 512,  # 512 to 524288
+        domain: tuple[float, float] = (-1.0, 1.0),
+    ):
+        super().__init__()
+        self.L = L  # resolution levels
+        self.T = T  # max entries per level
+        self.F = F  # dimension of features per entry
+        self.domain = domain
+
+        # compute the lookup table embeddings
+        num_embeddings = self.L * self.T
+        self.grid = nn.Embedding(num_embeddings=num_embeddings, embedding_dim=self.F)
+
+    def check_domain(self, x: torch.Tensor):
+        """Ensures that the input points are in the domain of the positional encoding."""
+        assert (x >= self.domain[0]).all()
+        assert (x <= self.domain[1]).all()
+
+    @property
+    def domain_length(self) -> float:
+        return self.domain[1] - self.domain[0]  # (1,)
+
+    @property
+    def voxel_size(self) -> torch.Tensor:
+        return 2 ** torch.arange(self.L)  # (L,)
+
+    @property
+    def voxel_length(self) -> torch.Tensor:
+        """The length of a voxel in world space."""
+        return self.domain_length / self.voxel_size  # (L,)
+
+    def points_to_grid_space(self, points: torch.Tensor):
+        # points float(-1.0,1.0) -> int[0,voxel_size]
+        normalized_points = (points - self.domain[0]) / self.domain_length  # (P, 3)
+        # each voxel has size 1.0 after that operation float(0.0, self.voxel_size)
+        voxel_size = self.voxel_size.reshape(-1, 1, 1)
+        return normalized_points.unsqueeze(dim=0) * voxel_size  # (L, P, 3)
+
+    def grid_to_points_space(self, grid_idx: torch.Tensor):
+        # inverse function to points_to_grid_space
+        grid_points = grid_idx / self.voxel_size.reshape(-1, 1, 1, 1)
+        return (grid_points * self.domain_length) + self.domain[0]
+
+    def fetch_embeddings(self, grid_idx: torch.Tensor):
+        # for each point we have 8 embeddings ids
+        grid_embs_idx = (
+            grid_idx[:, :, :, 0] * self.voxel_size.reshape(-1, 1, 1) ** 0
+            + grid_idx[:, :, :, 1] * self.voxel_size.reshape(-1, 1, 1) ** 1
+            + grid_idx[:, :, :, 2] * self.voxel_size.reshape(-1, 1, 1) ** 2
+        )  # (L, P, 8)
+        return self.grid(grid_embs_idx)  # (L, P, 8, D)
+
+    def points_to_voxel_grid(self, points: torch.Tensor):
+        # the idx of the top left voxel grid
+        grid_points = torch.floor(self.points_to_grid_space(points))  # (L, P, 3)
+        # compute all the grids
+        grid_idx = torch.stack(
+            [
+                grid_points + torch.tensor([0, 0, 0]),
+                grid_points + torch.tensor([1, 0, 0]),
+                grid_points + torch.tensor([0, 1, 0]),
+                grid_points + torch.tensor([1, 1, 0]),
+                grid_points + torch.tensor([0, 0, 1]),
+                grid_points + torch.tensor([1, 0, 1]),
+                grid_points + torch.tensor([0, 1, 1]),
+                grid_points + torch.tensor([1, 1, 1]),
+            ],
+            dim=-2,
+        ).long()  # (L, P, 8, 3) -> (L, P, 8, (x,y,z))
+        # convert into point space
+        grid_pos = self.grid_to_points_space(grid_idx)
+        return grid_pos, grid_idx
+
+    def trilinear_interpolation(
+        self,
+        points: torch.Tensor,  # (P, 3)
+        Q_pos: torch.Tensor,  # (L, P, 8, 3)
+        Q_emb: torch.Tensor,  # (L, P, 8, D)
+    ):
+        # https://en.wikipedia.org/wiki/Bilinear_interpolation
+        # fetch the value out of the points
+        x = points[:, 0]  # (P,)
+        y = points[:, 1]  # (P,)
+        z = points[:, 2]  # (P,)
+
+        # fetch the values out of the grid
+        x1 = Q_pos[:, :, 0, 0]  # (L, P)
+        x2 = Q_pos[:, :, 1, 0]  # (L, P)
+        y1 = Q_pos[:, :, 0, 1]  # (L, P)
+        y2 = Q_pos[:, :, 2, 1]  # (L, P)
+        z1 = Q_pos[:, :, 0, 2]  # (L, P)
+        z2 = Q_pos[:, :, 4, 2]  # (L, P)
+
+        # fetches the embeddings
+        q000 = Q_emb[:, :, 0]  # (L, P, D)
+        q100 = Q_emb[:, :, 1]  # (L, P, D)
+        q010 = Q_emb[:, :, 2]  # (L, P, D)
+        q110 = Q_emb[:, :, 3]  # (L, P, D)
+        q001 = Q_emb[:, :, 4]  # (L, P, D)
+        q101 = Q_emb[:, :, 5]  # (L, P, D)
+        q011 = Q_emb[:, :, 6]  # (L, P, D)
+        q111 = Q_emb[:, :, 7]  # (L, P, D)
+
+        # linear interpolation in the x-direction
+        wx0 = ((x2 - x) / (x2 - x1)).unsqueeze(dim=-1)  # (L, P, 1)
+        wx1 = ((x - x1) / (x2 - x1)).unsqueeze(dim=-1)  # (L, P, 1)
+        fx0 = wx0 * q000 + wx1 * q100  # (L, P, D)
+        fx1 = wx0 * q010 + wx1 * q110  # (L, P, D)
+        fx2 = wx0 * q001 + wx1 * q101  # (L, P, D)
+        fx3 = wx0 * q011 + wx1 * q111  # (L, P, D)
+
+        # linear interpolation in the y-direction
+        wy0 = ((y2 - y) / (y2 - y1)).unsqueeze(dim=-1)  # (L, P, 1)
+        wy1 = ((y - y1) / (y2 - y1)).unsqueeze(dim=-1)  # (L, P, 1)
+        fy0 = wy0 * fx0 + wy1 * fx1  # (L, P, D)
+        fy1 = wy0 * fx2 + wy1 * fx3  # (L, P, D)
+
+        # linear interpolation in the z-direction
+        wz0 = ((z2 - z) / (z2 - z1)).unsqueeze(dim=-1)  # (L, P, 1)
+        wz1 = ((z - z1) / (z2 - z1)).unsqueeze(dim=-1)  # (L, P, 1)
+        fz0 = wz0 * fy0 + wz1 * fy1  # (L, P, D)
+
+        return fz0  # (L, P, D)
+
+    def forward(self, x: torch.Tensor):
+        P, _ = x.shape  # (P, 3)
+        self.check_domain(x)  # x is of dim (P, 3)
+        # compute the nearby grid location
+        grid_pos, grid_idx = self.points_to_voxel_grid(x)
+        # compute the embeddings
+        grid_emb = self.fetch_embeddings(grid_idx)
+        # interplate along the cube grid of dim (P, D)
+        emb = self.trilinear_interpolation(points=x, Q_pos=grid_pos, Q_emb=grid_emb)
+        return emb.permute(1, 0, 2).reshape(P, -1)  # (P, D)
