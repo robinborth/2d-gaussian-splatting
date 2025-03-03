@@ -1,0 +1,11 @@
+# @package model.indicator_function
+
+defaults:
+  - base
+  - mlp/tiny_relu
+
+encoding:
+  _target_: neural_poisson.model.encoder.PositionalEncoding
+  _partial_: True
+  L: 10
+  activation: relu

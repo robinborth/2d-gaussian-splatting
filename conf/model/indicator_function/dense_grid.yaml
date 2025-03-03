@@ -1,0 +1,15 @@
+# @package model.indicator_function
+
+defaults:
+  - base
+  - mlp/tiny_relu
+
+encoding:
+  _target_: neural_poisson.model.encoder.DenseGridEncoding
+  _partial_: True
+  L: 6  # 64x64x64
+  D: 10 
+  domain: [-1.0, 1.0]
+  init_mode: uniform
+  activation: relu
+

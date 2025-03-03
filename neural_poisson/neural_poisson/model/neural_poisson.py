@@ -1,10 +1,8 @@
 import time
-from collections import defaultdict
 from pathlib import Path
 
 import lightning as L
 import torch
-import torch.nn as nn
 import wandb
 from pytorch3d.io import save_obj
 from pytorch3d.loss import chamfer_distance
@@ -14,13 +12,14 @@ from pytorch3d.structures import Meshes
 
 from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
 from neural_poisson.data.prepare import extract_surface_data
+from neural_poisson.model.encoder import IndicatorFunction
 
 
 class NeuralPoisson(L.LightningModule):
     def __init__(
         self,
         # encoder module either MLP, DenseGrid, etc.
-        encoder: nn.Module,
+        indicator_function: IndicatorFunction,
         # loss settings
         lambda_gradient: float = 1.0,
         lambda_surface: float = 1.0,
@@ -32,9 +31,6 @@ class NeuralPoisson(L.LightningModule):
         gradient_steps: int = 100,
         close_steps: int = 100,
         indicator_steps: int = 100,
-        # indicator settings
-        indicator_function: str = "default",  # "default", "center"
-        activation: str = "sinus",  # sin, sigmoid, tanh
         # logging
         log_camera_idxs: list[int] = [0],
         log_metrics: bool = True,
@@ -58,22 +54,9 @@ class NeuralPoisson(L.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters(logger=False)
-
-        # check for valid values
-        assert activation in ["sinus", "sigmoid", "tanh"]
-        assert indicator_function in ["default", "center"]
-
-        # for default: [0,1]; for center: [-0.5, 0.5]
-        self.X_offset = 0.0
-        self.isolevel = 0.5
-        if indicator_function == "center":
-            self.X_offset = -0.5
-            self.isolevel = 0.0
-
-        # the encoder takes as input a point cloud of dim (B, P, 3) and produces the
-        # logits of the indicator function which are then encoded with a tanh/sin
-        # function to be in the range of (-0.5, 0.5)
-        self.encoder = encoder()
+        self.indicator_function = indicator_function()
+        self.X_offset = self.indicator_function.X_offset
+        self.isolevel = self.indicator_function.isolevel
 
     ################################################################################
     # Optimizer Utils
@@ -292,7 +275,7 @@ class NeuralPoisson(L.LightningModule):
 
         # log the wandb gradients as histograms
         histograms = {}
-        for name, p in self.encoder.named_parameters():
+        for name, p in self.indicator_function.mlp.named_parameters():
             if p.grad is None:
                 continue
             h = wandb.Histogram(p.grad.data.detach().cpu())
@@ -301,7 +284,7 @@ class NeuralPoisson(L.LightningModule):
 
         # log the weights distribution of the layers
         histograms = {}
-        for name, p in self.encoder.named_parameters():
+        for name, p in self.indicator_function.mlp.named_parameters():
             h = wandb.Histogram(p.data.detach().cpu())
             histograms[f"Weights Histogram/{name}"] = h
         self.logger.experiment.log(histograms)
@@ -375,22 +358,7 @@ class NeuralPoisson(L.LightningModule):
 
     def forward(self, points: torch.Tensor):
         """Evaluates the indicator function for the given points."""
-        x = self.encoder(points)  # the logits of the encoder of dim (P, 1)
-        logits = x.squeeze(-1)  # (P,)
-
-        # transforms into indicator function
-        if self.hparams["activation"] == "sinus":
-            X = (torch.sin(logits) + 1) / 2  # [0, 1]
-        elif self.hparams["activation"] == "sigmoid":
-            X = torch.sigmoid(logits)  # [0, 1]
-        elif self.hparams["activation"] == "tanh":
-            X = (torch.tanh(logits) + 1) / 2  # [0, 1]
-
-        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
-        X = X + self.X_offset
-        # warmup for the indicator to be initial either 0.25 <-> -0.25
-        X = X - 0.25 * self.scheduler_step("indicator")
-
+        X, logits = self.indicator_function(points)
         return X, logits
 
     def model_step(self, batch: dict):

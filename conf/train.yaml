@@ -2,8 +2,7 @@
 
 defaults:
   - model: neural_poisson 
-  - encoder: mlp
-  - encoder/activation: siren 
+  - model/indicator_function: siren
   - optimizer: adam
   - scheduler: linear
   - logger: wandb

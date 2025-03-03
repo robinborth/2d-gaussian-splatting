@@ -1,0 +1,18 @@
+# # @package model.indicator_function.mlp
+
+defaults:
+  - _self_
+  - activation@activation: siren
+  - activation@out_activation: sigmoid
+
+_target_: neural_poisson.model.encoder.MultiLayerPerceptron
+_partial_: True
+in_features: 3
+out_features: 1
+hidden_features: 256 
+num_hidden_layers: 5
+activation: ???
+out_activation: ???
+out_bias: False
+weight_init: null
+first_layer_weight_init: null

@@ -1,0 +1,10 @@
+# @package model 
+
+defaults:
+  - neural_poisson
+
+# logging
+log_metrics: True 
+log_images: False
+log_optimizer: False
+log_mesh: False

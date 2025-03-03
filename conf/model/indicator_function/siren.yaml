@@ -1,0 +1,9 @@
+# @package model.indicator_function
+
+defaults:
+  - base
+  - mlp/siren
+
+encoding:
+  _target_: neural_poisson.model.encoder.IdentityEncoding
+  _partial_: True

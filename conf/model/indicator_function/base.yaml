@@ -1,0 +1,8 @@
+# @package model.indicator_function
+
+_target_: neural_poisson.model.encoder.IndicatorFunction
+_partial_: True
+mode: center 
+mlp: ???
+encoding: ???
+

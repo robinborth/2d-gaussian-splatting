@@ -1,5 +1,4 @@
 from collections import OrderedDict
-from functools import partial
 from typing import Any, Callable
 
 import numpy as np
@@ -25,17 +24,30 @@ class BaseActivation(nn.Module):
         return None
 
 
+class IdentityActivation(BaseActivation):
+    domain: tuple[float, float] = (-torch.inf, torch.inf)
+
+    def forward(self, x):
+        return x
+
+
 class CosineActivation(BaseActivation):
+    domain: tuple[float, float] = (-1.0, 1.0)
+
     def forward(self, x):
         return torch.cos(x)
 
 
 class SinusActivation(BaseActivation):
+    domain: tuple[float, float] = (-1.0, 1.0)
+
     def forward(self, x):
         return torch.cos(x)
 
 
 class SirenActivation(BaseActivation):
+    domain: tuple[float, float] = (-1.0, 1.0)
+
     def __init__(
         self,
         w: float = 30.0,
@@ -68,6 +80,8 @@ class SirenActivation(BaseActivation):
 
 
 class ReLUActivation(BaseActivation, nn.ReLU):
+    domain: tuple[float, float] = (0.0, torch.inf)
+
     def __init__(self, weight_init: bool = True):
         super().__init__()
         self._weight_init = weight_init
@@ -81,7 +95,23 @@ class ReLUActivation(BaseActivation, nn.ReLU):
             torch.nn.init.zeros_(m.bias)
 
 
+class SigmoidActivation(BaseActivation, nn.Sigmoid):
+    domain: tuple[float, float] = (0.0, 1.0)
+
+    def __init__(self, weight_init: bool = True):
+        super().__init__()
+        self._weight_init = weight_init
+
+    @torch.no_grad()
+    def weight_init(self, m: nn.Module):
+        if not hasattr(m, "weight") or not self._weight_init:
+            return None
+        nn.init.xavier_normal_(m.weight)
+
+
 class TanhActivation(BaseActivation, nn.Tanh):
+    domain: tuple[float, float] = (-1.0, 1.0)
+
     def __init__(self, weight_init: bool = True):
         super().__init__()
         self._weight_init = weight_init
@@ -94,6 +124,8 @@ class TanhActivation(BaseActivation, nn.Tanh):
 
 
 class GELUActivation(BaseActivation, nn.GELU):
+    domain: tuple[float, float] = (0.0, 1.0)
+
     def __init__(self, weight_init: bool = True):
         super().__init__()
         self._weight_init = weight_init
@@ -106,11 +138,11 @@ class GELUActivation(BaseActivation, nn.GELU):
 
 
 ################################################################################
-# MLP
+# MultiLayerPerceptron (MLP)
 ################################################################################
 
 
-class MLP(nn.Sequential):
+class MultiLayerPerceptron(nn.Sequential):
     def __init__(
         self,
         in_features: int = 3,
@@ -118,36 +150,37 @@ class MLP(nn.Sequential):
         hidden_features: int = 256,
         num_hidden_layers: int = 5,
         activation: Any = ReLUActivation,
-        out_activation: bool = False,
+        out_activation: Any = SigmoidActivation,
         out_bias: bool = False,
         weight_init: Callable | None = None,
         first_layer_weight_init: Callable | None = None,
+        last_layer_weight_init: Callable | None = None,
     ):
         # compute the base activation for init and name
         activation_cls = activation()
+        out_activation_cls = out_activation()
 
         layers: list[Any] = []
         names: list[str] = []
 
         # input layers
         layers.append(nn.Linear(in_features, hidden_features))
-        names.append("layer_0")
+        names.append("layer_in")
         layers.append(activation())
-        names.append(f"{activation_cls.name}_0")
+        names.append("activation_in")
 
         # hidden layers
         for i in range(num_hidden_layers):
             layers.append(nn.Linear(hidden_features, hidden_features))
             names.append(f"layer_{i+1}")
             layers.append(activation())
-            names.append(f"{activation_cls.name}_{i+1}")
+            names.append(f"activation_{i+1}")
 
         # output layer
         layers.append(nn.Linear(hidden_features, out_features, bias=out_bias))
-        names.append(f"layer_{i+2}")
-        if out_activation:
-            layers.append(activation())
-            names.append(f"{activation_cls.name}_{i+2}")
+        names.append("layer_out")
+        layers.append(out_activation())
+        names.append("activation_out")
 
         # initilize the mlp with the layers
         ordered_dict = OrderedDict(zip(names, layers))
@@ -158,14 +191,36 @@ class MLP(nn.Sequential):
             weight_init = activation_cls.weight_init
         if first_layer_weight_init is None:
             first_layer_weight_init = activation_cls.first_layer_weight_init
+        if last_layer_weight_init is None:
+            last_layer_weight_init = out_activation_cls.weight_init
 
-        if weight_init is not None:
-            self.apply(weight_init)
-        if first_layer_weight_init is not None:
-            self.layer_0.apply(first_layer_weight_init)
+        # save the weight initialization methods
+        self.weight_init = weight_init
+        self.first_layer_weight_init = first_layer_weight_init
+        self.last_layer_weight_init = last_layer_weight_init
 
-    def forward(self, x):
-        return super().forward(x)
+        # perform weight initialization
+        self.register_parameter()
+
+    def register_parameter(self):
+        if self.weight_init is not None:
+            self.apply(self.weight_init)
+        if self.first_layer_weight_init is not None:
+            self.layer_in.apply(self.first_layer_weight_init)
+        if self.first_layer_weight_init is not None:
+            self.layer_out.apply(self.last_layer_weight_init)
+
+    def forward(self, x: torch.Tensor):
+        """Returns the output before the activation and afte the activation."""
+        logit = None
+        out = None
+        for name, module in self._modules.items():
+            x = module(x)
+            if name.startswith("layer"):
+                logit = x
+            if name.startswith("activation"):
+                out = x
+        return out, logit
 
 
 ################################################################################
@@ -173,31 +228,77 @@ class MLP(nn.Sequential):
 ################################################################################
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, L: int = 10, domain: tuple[float, float] = (-1.0, 1.0)):
-        super().__init__()
-        self.L = L  # frequency levels
-        self.domain = domain
+class Encoding(nn.Module):
+    domain: tuple[float, float] = (-1.0, 1.0)
 
     def check_domain(self, x: torch.Tensor):
-        """Ensures that the input points are in the domain of the positional encoding."""
+        """Ensures that the input points are in the domain of the encoding."""
         assert (x >= self.domain[0]).all()
         assert (x <= self.domain[1]).all()
+        # x = x.clone()
+        # x[x < self.domain[0]] = self.domain[0]
+        # x[x > self.domain[1]] = self.domain[1]
+        return x, x.shape[0]  # (P,)
+
+    def check_output(self, x: torch.Tensor, output: torch.Tensor):
+        """Checks that the output dimension is correct."""
+        assert x.shape[0] == output.shape[0]
+        assert self.compute_output_dim() == output.shape[1]
+        return output  # (P, D)
+
+    def compute_output_dim(self):
+        """Compute the final output dimension of the embedding."""
+        return NotImplementedError("Define the output dim computation.")
+
+    @property
+    def reinitalize_first_layer(self):
+        """Determines whether the first MLP layer needs to be reinisialized."""
+        return True
+
+
+class IdentityEncoding(Encoding):
+    def compute_output_dim(self):
+        """Compute the final output dimension of the embedding."""
+        return 3
+
+    @property
+    def reinitalize_first_layer(self):
+        """Determines whether the first MLP layer needs to be reinisialized."""
+        return False
 
     def forward(self, x: torch.Tensor):
-        P, _ = x.shape
-        self.check_domain(x)  # x is of dim (P, 3)
+        return x
 
+
+class PositionalEncoding(Encoding):
+    def __init__(
+        self,
+        L: int = 10,
+        activation: str = "relu",
+        domain: tuple[float, float] = (-1.0, 1.0),
+    ):
+        super().__init__()
+        self.domain = domain
+        self.activation = activation
+        self.L = L  # frequency levels
+
+    def compute_output_dim(self):
+        """Compute the final output dimension of the embedding."""
+        return self.L * 2 * 3
+
+    def forward(self, x: torch.Tensor):
+        P = self.check_domain(x)
         # precompute the multiplier
         l = torch.arange(0, self.L, device=x.device)
         freq = (torch.pow(2, l) * torch.pi).reshape(1, 1, -1)  # (1, 1, L)
         sin = torch.sin(freq * x.unsqueeze(-1))  # (P, L)
         cos = torch.cos(freq * x.unsqueeze(-1))  # (P, L)
-
         # combine together different frequencies together where we have the following
         # (sin(2^0pix)_x, cos(2^0pix)_x, ..., sin(2^0l-1pix)_x, cos(2^l-1pix)_x, ...)
         # (s0_x, c0_x, ..., sl-1_x, cl-1_x, s0_y, ..., s0_z, ...)
-        return torch.cat([sin, cos], dim=-1).reshape(P, self.L * 2 * 3)  # (P, L*2*3)
+        D = self.compute_output_dim()
+        emb = torch.cat([sin, cos], dim=-1).reshape(P, D)  # (P, L*2*3)
+        return self.check_output(x, output=emb)
 
 
 ################################################################################
@@ -205,7 +306,7 @@ class PositionalEncoding(nn.Module):
 ################################################################################
 
 
-class GridEncoding(nn.Embedding):
+class GridEncoding(nn.Embedding, Encoding):
     def __init__(
         self,
         num_embeddings: int,
@@ -237,10 +338,6 @@ class GridEncoding(nn.Embedding):
         """Convert grid_idx to embedding idxs of a flat Embedding Table."""
         return NotImplementedError("Define the voxel resolution.")  # (L, P, 8)
 
-    def compute_output_dim(self):
-        """Compute the final output dimension of the embedding."""
-        return NotImplementedError("Define the output dim computation.")
-
     def weight_init(self, m: nn.Module):
         N = self.compute_output_dim()
         gain = torch.nn.init.calculate_gain(self.activation)
@@ -260,9 +357,6 @@ class GridEncoding(nn.Embedding):
         return super().forward(embedding_idx)  # (L, P, 8, D)
 
     def convert_into_voxel_cube(self, points: torch.Tensor):
-        # ensures that the input points are in the domain of the positional encoding
-        assert (points >= self.domain[0]).all()
-        assert (points <= self.domain[1]).all()
         # convert points into coord system of a unit cube (0.0, 1.0)
         domain_length = self.domain[1] - self.domain[0]  # (1,)
         normalized_points = (points - self.domain[0]) / domain_length
@@ -349,7 +443,7 @@ class GridEncoding(nn.Embedding):
         return fz0  # (L, P, D)
 
     def forward(self, x: torch.Tensor):
-        P, _ = x.shape  # (P, 3)
+        P = self.check_domain(x)
         # compute the nearby grid location
         grid_idx, grid_weights = self.points_to_grid_idxs(x)  # (L, P, 8, 3), (L, P, 3)
         # compute the embeddings
@@ -466,7 +560,76 @@ class HashGridEncoding(GridEncoding):
 
         # extract for each level the correct entry in the hash table
         levels = torch.arange(self.L).unsqueeze(dim=-1).unsqueeze(dim=-1)
-        grid_embs_idx *= levels
+        grid_embs_idx *= levels.to(self.device)
         assert grid_embs_idx.max() < self.num_embeddings
 
         return grid_embs_idx  # (L, P, 8)
+
+
+################################################################################
+# ImplicitField and the variants.
+################################################################################
+
+
+class ImplicitField(nn.Module):
+    """A scalar field that transforms points (P,3) into a scalar value (P,)."""
+
+    def __init__(
+        self,
+        mlp: Callable[..., MultiLayerPerceptron],
+        encoding: Callable[..., Encoding],
+        device: str = "cuda",
+    ):
+        super().__init__()
+        self.encoding = encoding()
+        # prepare the mlp based on the encoding
+        D = self.encoding.compute_output_dim()
+        self.mlp = mlp(in_features=D)
+        # re-initialize the first layer depending on the encoding
+        if self.encoding.reinitalize_first_layer:
+            self.mlp.first_layer_weight_init = self.mlp.weight_init
+            self.mlp.register_parameter()
+
+        # initilize to the correct device
+        self.to(device)
+
+    def forward(self, x: torch.Tensor):
+        encoding = self.encoding(x)  # (P, D)
+        out, logits = self.mlp(encoding)  # (P,1), (P,1)
+        return out.squeeze(dim=-1), logits.squeeze(dim=-1)  # (P,), (P,)
+
+
+class IndicatorFunction(ImplicitField):
+    def __init__(
+        self,
+        mlp: Callable[..., MultiLayerPerceptron],
+        encoding: Callable[..., Encoding],
+        mode: str = "default",  # "default", "center"
+        device: str = "cuda",
+    ):
+        """
+        The indicator takes as input a point cloud of dim (P, 3) and produces the
+        logits of the indicator function which are then encoded with a tanh/sin
+        function to be in the range of (-0.5, 0.5).
+        """
+        # initilize the indicator function
+        super().__init__(mlp=mlp, encoding=encoding)
+
+        # for default: [0,1] - for center: [-0.5, 0.5]
+        assert mode in ["default", "center"]
+        self.X_offset = -0.5 if mode == "center" else 0.0
+        self.isolevel = 0.0 if mode == "center" else 0.5
+        self.mode = mode
+
+        # initilize to the correct device
+        self.to(device)
+
+    def forward(self, points: torch.Tensor):
+        """Evaluates the indicator function for the given points."""
+        X, logits = super().forward(points)  # the logits of the encoder of dim (P,)
+        # transforms into indicator function [0, 1.0]
+        d_min, d_max = self.mlp.activation_out.domain
+        X = (X - d_min) / (d_max - d_min)
+        # transform into the required range : [0, 1] <-> [-0.5, 0.5]
+        X = X + self.X_offset
+        return X, logits  # (P,), (P,)

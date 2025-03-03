@@ -1,4 +1,4 @@
-# @package model.encoder.activation
+# @package model.indicator_function.mlp.activation
 
 _target_: neural_poisson.model.encoder.SirenActivation
 _partial_: True
