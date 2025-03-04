@@ -173,12 +173,10 @@ def main(cfg: DictConfig):
     """
     makefile_generator.default_template = """
     trainer.max_epochs=50 \\
-    data.dataset.max_surface_points=100_000 \\
-    data.dataset.max_close_points=0 \\
-    data.dataset.max_empty_points=0 \\
     data.dataset.resolution=512 \\
     data.dataset.sigma=2.0 \\
     model/indicator_function=siren \\
+    model.optimizer.lr=1e-04 \\
     model.lambda_gradient=1.0 \\
     model.lambda_surface=0.0 \\
     model.lambda_empty_space=0.0 \\
