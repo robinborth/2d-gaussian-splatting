@@ -9,6 +9,7 @@ from neural_poisson.data.prepare import (
     compute_chunks,
     extract_points_data,
     load_mesh,
+    map_to_domain,
     select_random_points,
     select_vector_field_function,
     subsample_dataset_points,
@@ -138,9 +139,9 @@ class ShapeNetCoreDataset(Dataset):
             close_points_surface_threshold=close_points_surface_threshold,
         )
         # stores for visualization but no on the GPU
+        self.point_maps = [map_to_domain(p, domain=domain) for p in data["point_maps"]]
         self.indicator_maps = data["indicator_maps"]
         self.normal_maps = data["normal_maps"]
-        self.point_maps = data["point_maps"]
         self.masks = data["masks"]
         self.finish_log()
 

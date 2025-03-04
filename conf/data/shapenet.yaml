@@ -34,7 +34,7 @@ dataset:
   empty_chunk_factor: 0.5
   use_full_chunk: False
   # subsampling settings
-  resolution: 128
+  resolution: 512
   domain: [-1.0, 1.0]
   max_surface_points: 100_000
   max_close_points: 100_000

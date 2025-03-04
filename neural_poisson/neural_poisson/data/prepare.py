@@ -74,7 +74,7 @@ def compute_chunks(num_chunks: int, chunk_size: int, values: list[torch.Tensor])
     for value in values:
         assert value.shape[0] == points_count
         if int(num_chunks * chunk_size) < value.shape[0]:
-            log.warning("The total chunk size is smaller then the number of poitns!")
+            log.warning("The total chunk size is smaller then the number of points!")
 
     # one big list that fills the entire epoch
     _permutations = []
@@ -426,6 +426,14 @@ def rasterize_attributes(
 ################################################################################
 # Point Processing Utilties
 ################################################################################
+
+
+def map_to_domain(points: torch.Tensor, domain: tuple[float, float] = (-1.0, 1.0)):
+    too_large_mask = points >= domain[1]
+    points[too_large_mask] = domain[1]
+    too_small_mask = points <= domain[0]
+    points[too_small_mask] = domain[0]
+    return points
 
 
 def sample_empty_space_points(
