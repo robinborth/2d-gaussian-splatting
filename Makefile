@@ -37,34 +37,27 @@ debug:
 
 training:
 	python neural_poisson/train.py \
-	data.epoch_size=100 \
-	data.batch_size=50_000 \
-	data.dataset.fov=30.0 \
-	data.dataset.dist=2.0 \
-	data.dataset.image_size=256 \
-	data.dataset.segments=12 \
-	data.dataset.k=1 \
-	data.dataset.vector_field_mode=nearest_neighbor \
-	data.dataset.max_surface_points=100_000 \
-	data.dataset.max_close_points=0 \
-	data.dataset.max_empty_points=0 \
-	data.dataset.resolution=0.001 \
-	data.dataset.sigma=0.001 \
-	model.optimizer.lr=1e-04 \
-	model.lambda_gradient=1.0 \
-	model.lambda_surface=0.0 \
-	model.lambda_empty_space=0.0 \
-	model.log_metrics=True \
-	model.log_metrics_every_n_steps=10 \
-	model.log_images=True \
-	model.log_optimizer=True \
-	model.log_mesh=False \
-	model.activation=tanh \
-	model.encoder.activation=tanh \
-	trainer.max_epochs=200 \
-	trainer.detect_anomaly=False \
-	trainer.log_every_n_steps=10 \
-	scheduler=exponential \
+    trainer.max_epochs=50 \
+    data.epoch_size=100 \
+    data.batch_size=50_000 \
+    data.dataset.vector_field_mode=k_nearest_neighbors \
+    data.dataset.k=10 \
+    data.dataset.max_surface_points=100_000 \
+    data.dataset.max_close_points=0 \
+    data.dataset.max_empty_points=0 \
+    data.dataset.resolution=512 \
+    data.dataset.sigma=2.0 \
+    model/indicator_function=siren \
+    model.lambda_gradient=1.0 \
+    model.lambda_surface=0.0 \
+    model.lambda_empty_space=0.0 \
+    model.log_metrics=True \
+    model.log_images=True \
+    model.log_optimizer=True \
+    model.log_mesh=True \
+    model.optimizer.lr=1e-04 \
+	model.indicator_function.mlp.last_layer_weight_init=False \
+    scheduler=exponential_0_99 \
 
 
 ########################################################################

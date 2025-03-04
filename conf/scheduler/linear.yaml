@@ -1,6 +1,9 @@
 # @package model 
 
-monitor: train/loss
+defaults:
+  - none 
+  - _self_
+
 scheduler:
   _partial_: True
   _target_: torch.optim.lr_scheduler.LinearLR

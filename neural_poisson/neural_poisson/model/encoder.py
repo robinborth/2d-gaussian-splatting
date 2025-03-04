@@ -154,7 +154,7 @@ class MultiLayerPerceptron(nn.Sequential):
         out_bias: bool = False,
         weight_init: Callable | None = None,
         first_layer_weight_init: Callable | None = None,
-        last_layer_weight_init: Callable | None = None,
+        last_layer_weight_init: bool = False,
     ):
         # compute the base activation for init and name
         activation_cls = activation()
@@ -191,13 +191,13 @@ class MultiLayerPerceptron(nn.Sequential):
             weight_init = activation_cls.weight_init
         if first_layer_weight_init is None:
             first_layer_weight_init = activation_cls.first_layer_weight_init
-        if last_layer_weight_init is None:
-            last_layer_weight_init = out_activation_cls.weight_init
-
-        # save the weight initialization methods
         self.weight_init = weight_init
         self.first_layer_weight_init = first_layer_weight_init
-        self.last_layer_weight_init = last_layer_weight_init
+
+        # use special init for last activation based on the final non-linearity
+        self.last_layer_weight_init = out_activation_cls.weight_init
+        if not last_layer_weight_init:
+            self.last_layer_weight_init = None
 
         # perform weight initialization
         self.register_parameter()

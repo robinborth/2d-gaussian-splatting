@@ -13,7 +13,7 @@ dataset:
   segments: 4
   image_size: 128
   # subsampling settings
-  resolution: 0.05
+  resolution: 32 
   max_surface_points: 10_000
   max_close_points: 10_000
   max_empty_points: 10_000

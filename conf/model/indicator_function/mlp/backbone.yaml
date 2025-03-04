@@ -16,3 +16,4 @@ out_activation: ???
 out_bias: False
 weight_init: null
 first_layer_weight_init: null
+last_layer_weight_init: False

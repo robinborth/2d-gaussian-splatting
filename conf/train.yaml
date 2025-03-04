@@ -4,7 +4,7 @@ defaults:
   - model: neural_poisson 
   - model/indicator_function: siren
   - optimizer: adam
-  - scheduler: linear
+  - scheduler: exponential
   - logger: wandb
   - data: couch
   - trainer: default

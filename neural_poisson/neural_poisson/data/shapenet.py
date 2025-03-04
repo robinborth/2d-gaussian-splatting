@@ -78,7 +78,7 @@ class ShapeNetCoreDataset(Dataset):
         empty_chunk_factor: float = 0.5,
         use_full_chunk: bool = False,  # overrides the chunk_size but not factor
         # subsampling settings
-        resolution: float = 0.01,
+        resolution: int = 256,  # in voxels
         domain: tuple[float, float] = (-1.0, 1.0),
         max_surface_points: int = 100_000,
         max_close_points: int = 100_000,
@@ -91,7 +91,7 @@ class ShapeNetCoreDataset(Dataset):
         vector_field_mode: str = "nearest_neighbor",
         vector_field_chunk_size: int = 1_000,
         k: int = 20,
-        sigma: float = 1.0,
+        sigma: float = 1.0,  # w.r.t resolution
         chunk_threshold: float = 30,
         # logging settings
         log_camera_idxs: list[int] = [0],
@@ -108,7 +108,8 @@ class ShapeNetCoreDataset(Dataset):
         self.surface_chunk_factor = surface_chunk_factor
         self.close_chunk_factor = close_chunk_factor
         self.empty_chunk_factor = empty_chunk_factor
-        self.resolution = resolution
+        self.resolution = (domain[1] - domain[0]) / resolution
+        self.sigma = self.resolution * sigma
         self.log_camera_idxs = log_camera_idxs
         self.fill_depth = fill_depth
         self.log_time = log_time
@@ -149,7 +150,7 @@ class ShapeNetCoreDataset(Dataset):
             points_close=data["points_close"],
             points_empty=data["points_empty"],
             normals=data["normals"],
-            resolution=resolution,
+            resolution=self.resolution,
             domain=domain,
             max_surface_points=max_surface_points,
             max_close_points=max_close_points,
@@ -176,7 +177,7 @@ class ShapeNetCoreDataset(Dataset):
             vector_field_mode=vector_field_mode,
             chunk_size=vector_field_chunk_size,
             k=k,
-            sigma=sigma,
+            sigma=self.sigma,
             threshold=chunk_threshold,
         )
         self.finish_log()

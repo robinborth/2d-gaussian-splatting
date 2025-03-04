@@ -173,15 +173,12 @@ def main(cfg: DictConfig):
     """
     makefile_generator.default_template = """
     trainer.max_epochs=50 \\
-    data.epoch_size=100 \\
-    data.batch_size=50_000 \\
-    data.dataset.vector_field_mode=k_nearest_neighbors \\
-    data.dataset.k=10 \\
     data.dataset.max_surface_points=100_000 \\
     data.dataset.max_close_points=0 \\
     data.dataset.max_empty_points=0 \\
-    data.dataset.resolution=0.001 \\
-    data.dataset.sigma=0.001 \\
+    data.dataset.resolution=512 \\
+    data.dataset.sigma=2.0 \\
+    model/indicator_function=siren \\
     model.lambda_gradient=1.0 \\
     model.lambda_surface=0.0 \\
     model.lambda_empty_space=0.0 \\
@@ -189,11 +186,6 @@ def main(cfg: DictConfig):
     model.log_images=True \\
     model.log_optimizer=True \\
     model.log_mesh=True \\
-    model.optimizer.lr=1e-04 \\
-    model.activation=sigmoid \\
-    encoder/activation=siren \\
-    scheduler=exponential \\
-    model.scheduler.gamma=0.99 \\
     """
     makefile_generator.debug_template = """
     trainer.max_epochs=10 \\
@@ -201,98 +193,39 @@ def main(cfg: DictConfig):
     data.batch_size=1_000 \\
     data.dataset.segments=4 \\
     data.dataset.image_size=128 \\
-    data.dataset.resolution=0.05 \\
+    data.dataset.resolution=64 \\
     data.dataset.log_camera_idxs=[0] \\
     model.log_mesh=False \\
     callbacks.model_checkpoint.every_n_epochs=10 \\
     """
     value: Any = None
 
-    # group = "grad"
-    # value = [0, 100_000]
-    # prefix = ["surface", "full"]
-    # template = """
-    # data.dataset.max_surface_points=100_000 \\
-    # data.dataset.max_close_points={value} \\
-    # data.dataset.max_empty_points={value} \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # 0.00390625 -> 256 voxel size
-    group = "full_loss_voxel256"
-    value = [0.0, 1e-02, 5e-03]
+    group = "grad_sigma_1_0_voxel"
+    value = [128, 256, 512, 1024]
     prefix = makefile_generator.convert_float_to_scientific(value)
     template = """
-    data.dataset.resolution=0.00390625 \\
-    data.dataset.sigma=0.00390625 \\
-    data.dataset.max_surface_points=100_000 \\
-    data.dataset.max_close_points=100_000 \\
-    data.dataset.max_empty_points=100_000 \\
-    model.lambda_surface={value} \\
-    model.lambda_empty_space={value} \\
+    data.dataset.resolution={value} \\
+    data.dataset.sigma=1.0 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    # group = "close_points"
-    # value = [0, 100_000]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = """
-    # data.dataset.max_close_points={value} \\
-    # data.dataset.vector_field_mode=k_nearest_neighbors \\
-    # data.dataset.k=10 \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
+    group = "grad_sigma_2_0_voxel"
+    value = [128, 256, 512, 1024]
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = """
+    data.dataset.resolution={value} \\
+    data.dataset.sigma=2.0 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
 
-    # group = "max_empty_points"
-    # value = [0, 100_000, 200_000, 500_000]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = """
-    # data.dataset.max_empty_points={value} \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # group = "surface_objective"
-    # value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = "model.lambda_surface={value} \\"
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # group = "empty_objective"
-    # value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = """
-    # model.lambda_empty_space={value} \\
-    # data.dataset.max_empty_points=100_000 \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # group = "empty_surface_objective"
-    # value = [1e2, 1e1, 1e0, 1e-01, 1e-02, 1e-03]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = """
-    # model.lambda_surface={value} \\
-    # model.lambda_empty_space={value} \\
-    # data.dataset.max_empty_points=100_000 \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
-
-    # group = "only_empty_surface_objective_learning_rate"
-    # value = [
-    #     1e-04,
-    #     9e-05,
-    #     7e-05,
-    #     5e-05,
-    #     3e-05,
-    #     1e-05,
-    # ]
-    # prefix = makefile_generator.convert_float_to_scientific(value)
-    # template = """
-    # model.lambda_gradient=0.0 \\
-    # model.lambda_surface={value} \\
-    # model.lambda_empty_space={value} \\
-    # data.dataset.max_empty_points=100_000 \\
-    # """
-    # makefile_generator.add(group, template, prefix, value=value)
+    group = "grad_sigma_0_5_voxel"
+    value = [128, 256, 512, 1024]
+    prefix = makefile_generator.convert_float_to_scientific(value)
+    template = """
+    data.dataset.resolution={value} \\
+    data.dataset.sigma=0.5 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
 
     makefile_generator.build()
 
