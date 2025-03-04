@@ -1,5 +1,3 @@
-# @package model.encoder.activation
-
 _target_: neural_poisson.model.encoder.ReLUActivation
 _partial_: True
 weight_init: True

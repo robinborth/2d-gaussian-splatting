@@ -1,5 +1,3 @@
-# @package model.encoder.activation
-
 _target_: neural_poisson.model.encoder.SirenActivation
 _partial_: True
 w: 30.0

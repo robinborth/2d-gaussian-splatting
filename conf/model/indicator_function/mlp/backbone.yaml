@@ -2,8 +2,8 @@
 
 defaults:
   - _self_
-  - activation@activation: siren
-  - activation@out_activation: sigmoid
+  - activation: siren
+  - out_activation: sigmoid
 
 _target_: neural_poisson.model.encoder.MultiLayerPerceptron
 _partial_: True

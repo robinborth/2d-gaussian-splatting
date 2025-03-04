@@ -207,7 +207,7 @@ class MultiLayerPerceptron(nn.Sequential):
             self.apply(self.weight_init)
         if self.first_layer_weight_init is not None:
             self.layer_in.apply(self.first_layer_weight_init)
-        if self.first_layer_weight_init is not None:
+        if self.last_layer_weight_init is not None:
             self.layer_out.apply(self.last_layer_weight_init)
 
     def forward(self, x: torch.Tensor):

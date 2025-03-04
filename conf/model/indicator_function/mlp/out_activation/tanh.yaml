@@ -1,5 +1,3 @@
-# @package model.encoder.activation
-
 _target_: neural_poisson.model.encoder.TanhActivation
 _partial_: True
-weight_init: False 
+weight_init: True

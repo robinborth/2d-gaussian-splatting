@@ -1,4 +1,2 @@
-# @package model.encoder.activation
-
 _target_: neural_poisson.model.encoder.CosineActivation
 _partial_: True

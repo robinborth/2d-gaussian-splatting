@@ -3,7 +3,6 @@
 defaults:
   - base
   - mlp/backbone
-  - mlp/activation/siren
 
 encoding:
   _target_: neural_poisson.model.encoder.IdentityEncoding

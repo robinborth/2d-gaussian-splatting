@@ -1,5 +1,3 @@
-# @package model.indicator_function.mlp
-
 _target_: neural_poisson.model.encoder.SigmoidActivation
 _partial_: True
 weight_init: True

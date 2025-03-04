@@ -1,5 +1,0 @@
-# @package model.encoder.activation
-
-_target_: neural_poisson.model.encoder.GELUActivation
-_partial_: True
-weight_init: False 

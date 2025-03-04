@@ -2,7 +2,8 @@
 
 defaults:
   - base
-  - mlp/tiny_relu
+  - mlp/tiny
+  - mlp/activation/relu
 
 encoding:
   _target_: neural_poisson.model.encoder.HashGridEncoding
