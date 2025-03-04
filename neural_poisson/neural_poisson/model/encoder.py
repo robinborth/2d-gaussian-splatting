@@ -235,10 +235,7 @@ class Encoding(nn.Module):
         """Ensures that the input points are in the domain of the encoding."""
         assert (x >= self.domain[0]).all()
         assert (x <= self.domain[1]).all()
-        # x = x.clone()
-        # x[x < self.domain[0]] = self.domain[0]
-        # x[x > self.domain[1]] = self.domain[1]
-        return x, x.shape[0]  # (P,)
+        return x
 
     def check_output(self, x: torch.Tensor, output: torch.Tensor):
         """Checks that the output dimension is correct."""
@@ -287,7 +284,8 @@ class PositionalEncoding(Encoding):
         return self.L * 2 * 3
 
     def forward(self, x: torch.Tensor):
-        P = self.check_domain(x)
+        x = self.check_domain(x)
+        P, _ = x.shape
         # precompute the multiplier
         l = torch.arange(0, self.L, device=x.device)
         freq = (torch.pow(2, l) * torch.pi).reshape(1, 1, -1)  # (1, 1, L)
@@ -443,7 +441,8 @@ class GridEncoding(nn.Embedding, Encoding):
         return fz0  # (L, P, D)
 
     def forward(self, x: torch.Tensor):
-        P = self.check_domain(x)
+        x = self.check_domain(x)
+        P, _ = x.shape
         # compute the nearby grid location
         grid_idx, grid_weights = self.points_to_grid_idxs(x)  # (L, P, 8, 3), (L, P, 3)
         # compute the embeddings

@@ -5,15 +5,15 @@ defaults:
   - _self_
 
 # training settings
-epoch_size: 1
-batch_size: 1_000
+epoch_size: 10
+batch_size: 5_000
 
 dataset:
   # dataset settings
   segments: 4
   image_size: 128
   # subsampling settings
-  resolution: 32 
+  resolution: 64
   max_surface_points: 10_000
   max_close_points: 10_000
   max_empty_points: 10_000
@@ -22,6 +22,6 @@ dataset:
   close_points_per_ray: 1
   # vector field settings 
   vector_field_mode: k_nearest_neighbors
-  k: 10
+  k: 5
   # logging settings
   log_camera_idxs: [0]
