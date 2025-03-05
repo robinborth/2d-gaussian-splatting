@@ -209,11 +209,10 @@ class NeuralPoisson(L.LightningModule):
         self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
 
     def logging_optimizer(self, mode: str = "train"):
-        if self.global_step == 0:
-            return
-
         # extreact the information from the training
         optimizer = self.optimizers()._optimizer  # type: ignore
+        if self.global_step == 0 or not optimizer.state_dict()["state"]:
+            return
 
         # extract the state dict and param groups
         layer = 0

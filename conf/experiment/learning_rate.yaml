@@ -1,0 +1,31 @@
+# @package _global_
+
+
+trainer:
+  max_epochs: 300
+  log_every_n_steps: 1
+
+callbacks:
+  model_checkpoint: 
+      every_n_epochs: ${trainer.max_epochs}
+
+data:
+  batch_size: 20_000
+  epoch_size: 1
+
+model:
+  log_metrics: True
+  log_metrics_every_n_steps: 1
+  log_images: False
+  log_optimizer: True
+  log_mesh: False
+  scheduler:
+    _partial_: True
+    _target_: torch.optim.lr_scheduler.ExponentialLR
+    gamma: 1.1
+  optimizer:
+    _target_: torch.optim.SGD 
+    _partial_: True
+    momentum: 0.0
+    lr: 1e-12
+    
