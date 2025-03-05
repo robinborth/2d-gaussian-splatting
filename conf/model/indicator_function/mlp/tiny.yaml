@@ -5,7 +5,7 @@ defaults:
   - activation: relu 
   - out_activation: sigmoid
 
-_target_: neural_poisson.model.encoder.MultiLayerPerceptron
+_target_: neural_poisson.model.mlp.MultiLayerPerceptron
 _partial_: True
 in_features: ???
 out_features: 1

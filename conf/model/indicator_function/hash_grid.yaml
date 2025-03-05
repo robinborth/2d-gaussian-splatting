@@ -6,7 +6,7 @@ defaults:
   - mlp/activation/relu
 
 encoding:
-  _target_: neural_poisson.model.encoder.HashGridEncoding
+  _target_: neural_poisson.model.encoding.HashGridEncoding
   _partial_: True
   L: 10
   T: 524288  # 2^19

@@ -5,5 +5,5 @@ defaults:
   - mlp/backbone
 
 encoding:
-  _target_: neural_poisson.model.encoder.IdentityEncoding
+  _target_: neural_poisson.model.encoding.IdentityEncoding
   _partial_: True

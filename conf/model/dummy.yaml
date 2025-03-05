@@ -1,3 +1,0 @@
-# @package model 
-
-_target_: neural_poisson.model.dummy.DummyModel

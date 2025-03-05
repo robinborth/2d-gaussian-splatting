@@ -1,2 +1,2 @@
-_target_: neural_poisson.model.encoder.CosineActivation
+_target_: neural_poisson.model.mlp.CosineActivation
 _partial_: True

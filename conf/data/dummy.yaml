@@ -1,2 +1,0 @@
-# @package data
-_target_: neural_poisson.data.dummy.DummyDatamodule

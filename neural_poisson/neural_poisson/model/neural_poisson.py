@@ -12,7 +12,7 @@ from pytorch3d.structures import Meshes
 
 from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
 from neural_poisson.data.prepare import extract_surface_data
-from neural_poisson.model.encoder import IndicatorFunction
+from neural_poisson.model.implicit import IndicatorFunction
 
 
 class NeuralPoisson(L.LightningModule):

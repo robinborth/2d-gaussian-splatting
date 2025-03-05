@@ -6,7 +6,7 @@ defaults:
   - mlp/activation/relu
 
 encoding:
-  _target_: neural_poisson.model.encoder.PositionalEncoding
+  _target_: neural_poisson.model.encoding.PositionalEncoding
   _partial_: True
   L: 10
   activation: relu
