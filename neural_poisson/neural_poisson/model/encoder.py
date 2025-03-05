@@ -224,7 +224,7 @@ class MultiLayerPerceptron(nn.Sequential):
 
 
 ################################################################################
-# Encodings of Position
+# Base Encoding of Position
 ################################################################################
 
 
@@ -265,6 +265,11 @@ class IdentityEncoding(Encoding):
 
     def forward(self, x: torch.Tensor):
         return x
+
+
+################################################################################
+# Fourier Positional Encoding
+################################################################################
 
 
 class PositionalEncoding(Encoding):
@@ -593,9 +598,17 @@ class ImplicitField(nn.Module):
         self.to(device)
 
     def forward(self, x: torch.Tensor):
-        encoding = self.encoding(x)  # (P, D)
+        # handle arbitrary points shapes
+        shape = x.shape[:-1]
+        points = x.reshape(-1, 3)  # (P, 3)
+        # positional encoding
+        encoding = self.encoding(points)  # (P, D)
+        # predicts
         out, logits = self.mlp(encoding)  # (P,1), (P,1)
-        return out.squeeze(dim=-1), logits.squeeze(dim=-1)  # (P,), (P,)
+        # transform into original shape
+        out = out.reshape(*shape)  # (P,)
+        logits = logits.reshape(*shape)  # (P,)
+        return out, logits
 
 
 class IndicatorFunction(ImplicitField):

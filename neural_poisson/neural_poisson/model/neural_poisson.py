@@ -110,8 +110,8 @@ class NeuralPoisson(L.LightningModule):
             device=self.device,
         )
         # evaluate the indicator function
-        x, _ = self.forward(grid.reshape(-1, 3))
-        return x.reshape(N, N)
+        x, _ = self.forward(grid)
+        return x
 
     def compute_basic_stats(self, points: torch.Tensor, name: str):
         stats = {}
