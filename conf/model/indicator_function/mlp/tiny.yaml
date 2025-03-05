@@ -2,7 +2,6 @@
 
 defaults:
   - _self_
-  - activation: relu 
   - out_activation: sigmoid
 
 _target_: neural_poisson.model.mlp.MultiLayerPerceptron

@@ -88,6 +88,9 @@ class MakefileGenerator:
     def convert_float_to_scientific(self, values):
         return [f"{v:.1E}".replace(".", "-") for v in values]
 
+    def generate_learning_rates(self, base_lr: float = 1e-03, count: int = 10):
+        return [base_lr * (0.5**i) for i in range(count)]
+
     def _add(
         self,
         group: str,
@@ -175,8 +178,8 @@ def main(cfg: DictConfig):
     trainer.max_epochs=50 \\
     data.dataset.resolution=512 \\
     data.dataset.sigma=2.0 \\
-    model/indicator_function=siren \\
-    model.optimizer.lr=1e-04 \\
+    model/indicator_function=positional_encoding \\
+    model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
     model.lambda_surface=0.0 \\
     model.lambda_empty_space=0.0 \\
@@ -198,30 +201,47 @@ def main(cfg: DictConfig):
     """
     value: Any = None
 
-    group = "grad_sigma_1_0_voxel"
-    value = [128, 256, 512, 1024]
-    prefix = makefile_generator.convert_float_to_scientific(value)
+    group = "positional_encoding_analytical"
+    value = ["analytical"]
+    prefix = value
     template = """
-    data.dataset.resolution={value} \\
-    data.dataset.sigma=1.0 \\
+    model/indicator_function=positional_encoding \\
+    model.indicator_function.encoding.L=10 \\
+    model.gradient_compute_mode={value} \\
+    model.optimizer.lr=1e-03 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "grad_sigma_2_0_voxel"
-    value = [128, 256, 512, 1024]
+    group = "positional_encoding_numerical_eps"
+    value = makefile_generator.generate_learning_rates(1 / 16, 6)
     prefix = makefile_generator.convert_float_to_scientific(value)
     template = """
-    data.dataset.resolution={value} \\
-    data.dataset.sigma=2.0 \\
+    model/indicator_function=positional_encoding \\
+    model.indicator_function.encoding.L=10 \\
+    model.gradient_compute_mode=numerical \\
+    model.gradient_eps={value} \\
+    model.optimizer.lr=1e-03 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "grad_sigma_0_5_voxel"
-    value = [128, 256, 512, 1024]
+    group = "siren_analytical"
+    value = ["analytical"]
+    prefix = value
+    template = """
+    model/indicator_function=siren \\
+    model.gradient_compute_mode={value} \\
+    model.optimizer.lr=5e-05 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
+
+    group = "siren_numerical_eps"
+    value = makefile_generator.generate_learning_rates(1 / 16, 6)
     prefix = makefile_generator.convert_float_to_scientific(value)
     template = """
-    data.dataset.resolution={value} \\
-    data.dataset.sigma=0.5 \\
+    model/indicator_function=siren \\
+    model.gradient_compute_mode=numerical \\
+    model.gradient_eps={value} \\
+    model.optimizer.lr=5e-05 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 

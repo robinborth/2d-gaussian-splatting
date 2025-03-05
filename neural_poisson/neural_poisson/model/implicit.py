@@ -78,9 +78,13 @@ class ImplicitField(nn.Module):
                 torch.Tensor([0.0, 0.0, -eps]),
             ]
             eps_points = torch.stack(eps_points, dim=0).to(points)
-            x = points[None, :, :] + eps_points[:, None, :]  # (6, P, 3)
+            x = points.unsqueeze(-2) + eps_points  # (6, P, 3)
             x, _ = self.forward(x)
-            grads: Any = [x[0] - x[1], x[2] - x[3], x[4] - x[5]]
+            grads: Any = [
+                x[..., 0] - x[..., 1],
+                x[..., 2] - x[..., 3],
+                x[..., 4] - x[..., 5],
+            ]
             gradients = torch.stack(grads, dim=-1) / (2 * eps)  # (P, 3)
         else:
             raise ValueError(f"Wrong {mode=}!")

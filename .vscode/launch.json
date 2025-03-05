@@ -42,7 +42,7 @@
                 "model.lambda_gradient=1.0",
                 "model.lambda_surface=0.0",
                 "model.lambda_empty_space=0.0",
-                "model.log_images=False",
+                "model.log_images=True",
                 "model.log_mesh=False",
             ],
             "console": "integratedTerminal",

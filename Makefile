@@ -3,10 +3,10 @@
 ########################################################################
 
 debug:
-	make debug -f Makefile.abl -j 6
+	python makefile.py & make debug -f Makefile.abl -j 6
 
 all:
-	make all -f Makefile.abl
+	python makefile.py & make all -f Makefile.abl
 
 ########################################################################
 # Debug 
