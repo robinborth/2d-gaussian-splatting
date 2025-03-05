@@ -20,6 +20,8 @@ class NeuralPoisson(L.LightningModule):
         self,
         # encoder module either MLP, DenseGrid, etc.
         indicator_function: IndicatorFunction,
+        gradient_compute_mode: str = "analytical",  # "analytical", "numerical"
+        gradient_eps: float = 1e-08,
         # loss settings
         lambda_gradient: float = 1.0,
         lambda_surface: float = 1.0,
@@ -200,7 +202,7 @@ class NeuralPoisson(L.LightningModule):
         self.logger.log_image(f"{name}/indicator_gt", [img_X_gt])  # type: ignore
 
         # compute the normal and vector maps
-        dX_point_map = self.compute_gradient(x_point_map, point_map)
+        dX_point_map = self.compute_gradient(point_map, x_point_map)
         img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
         img_dX_gt = wandb.Image(batch["vector_map"].detach().cpu().numpy())
         img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
@@ -342,18 +344,13 @@ class NeuralPoisson(L.LightningModule):
     # Training Methods
     ################################################################################
 
-    def compute_gradient(self, X: torch.Tensor, points: torch.Tensor):
-        # we want to compute dX/dp, which is the gradient of the estimated indicator function
-        # X w.r.t the input points. However we can only compute dL/dp which computes the
-        # gradients from a loss scalar. The chain rule is dL/dp = dL/dX * dX/dp. In order to
-        # compute dX/dp we need to define the loss function do get dL/dX = 1, which results in
-        # a simple summation of dX, e.g. L=X.sum(), where the derivatives are 1.
-        return torch.autograd.grad(
-            outputs=X.sum(),
-            inputs=points,
-            retain_graph=True,
-            create_graph=True,
-        )[0]
+    def compute_gradient(self, points: torch.Tensor, X: torch.Tensor):
+        return self.indicator_function.compute_gradient(
+            points=points,
+            field_values=X,
+            mode=self.hparams["gradient_compute_mode"],
+            eps=self.hparams["gradient_eps"],
+        )
 
     def forward(self, points: torch.Tensor):
         """Evaluates the indicator function for the given points."""
@@ -392,9 +389,9 @@ class NeuralPoisson(L.LightningModule):
         dX_close = torch.tensor([])
         dX_empty = torch.tensor([])
         if self.hparams["lambda_gradient"]:
-            dX_surface = self.compute_gradient(x_surface, p_surface)
-            dX_close = self.compute_gradient(x_close, p_close)
-            dX_empty = self.compute_gradient(x_empty, p_empty)
+            dX_surface = self.compute_gradient(p_surface, x_surface)
+            dX_close = self.compute_gradient(p_close, x_close)
+            dX_empty = self.compute_gradient(p_empty, x_empty)
         time_dX = time.time() - time_dX
 
         # surface constraint

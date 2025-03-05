@@ -12,9 +12,9 @@ class Encoding(nn.Module):
 
     def check_domain(self, x: torch.Tensor):
         """Ensures that the input points are in the domain of the encoding."""
-        assert (x >= self.domain[0]).all()
-        assert (x <= self.domain[1]).all()
-        return x
+        lower = torch.tensor(self.domain[0]).to(x)
+        upper = torch.tensor(self.domain[1]).to(x)
+        return torch.min(torch.max(x, lower), upper)
 
     def check_output(self, x: torch.Tensor, output: torch.Tensor):
         """Checks that the output dimension is correct."""
@@ -43,7 +43,7 @@ class IdentityEncoding(Encoding):
         return False
 
     def forward(self, x: torch.Tensor):
-        return x
+        return self.check_domain(x)
 
 
 ################################################################################

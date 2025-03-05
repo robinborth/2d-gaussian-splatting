@@ -7,6 +7,10 @@ indicator_function: ???
 optimizer: ???
 scheduler: ???
 
+# gradient computation mode
+gradient_compute_mode: analytical
+gradient_eps: 1e-05
+
 # network settings
 lambda_gradient: 1.0
 lambda_surface: 1.0
