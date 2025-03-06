@@ -181,8 +181,8 @@ def main(cfg: DictConfig):
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
-    model.lambda_surface=0.0 \\
-    model.lambda_empty_space=0.0 \\
+    model.lambda_surface=1.0 \\
+    model.lambda_empty_space=1.0 \\
     model.log_metrics=True \\
     model.log_images=True \\
     model.log_optimizer=True \\
@@ -201,49 +201,106 @@ def main(cfg: DictConfig):
     """
     value: Any = None
 
-    group = "positional_encoding_analytical"
-    value = ["analytical"]
+    group = "full_relu_numerical_wo_close"
+    value = ["mlp", "positional_encoding"]
     prefix = value
     template = """
+    trainer.max_epochs=200 \\
+    data.dataset.resolution=512 \\
+    data.dataset.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
-    model.indicator_function.encoding.L=10 \\
-    model.gradient_compute_mode={value} \\
     model.optimizer.lr=1e-03 \\
-    """
-    makefile_generator.add(group, template, prefix, value=value)
-
-    group = "positional_encoding_numerical_eps"
-    value = makefile_generator.generate_learning_rates(1 / 16, 6)
-    prefix = makefile_generator.convert_float_to_scientific(value)
-    template = """
-    model/indicator_function=positional_encoding \\
-    model.indicator_function.encoding.L=10 \\
+    model.lambda_gradient=1.0 \\
+    model.lambda_surface=1.0 \\
+    model.lambda_empty_space=1.0 \\
+    model.close_mode=zero \\
+    model/indicator_function={value} \\
     model.gradient_compute_mode=numerical \\
-    model.gradient_eps={value} \\
-    model.optimizer.lr=1e-03 \\
+    model.gradient_eps=1e-02 \\
+    model.optimizer.lr=0.0002 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "siren_analytical"
-    value = ["analytical"]
+    group = "full_relu_analytical_wo_close"
+    value = ["mlp"]
     prefix = value
     template = """
-    model/indicator_function=siren \\
-    model.gradient_compute_mode={value} \\
-    model.optimizer.lr=5e-05 \\
+    trainer.max_epochs=200 \\
+    data.dataset.resolution=512 \\
+    data.dataset.sigma=2.0 \\
+    model/indicator_function=positional_encoding \\
+    model.optimizer.lr=1e-03 \\
+    model.lambda_gradient=1.0 \\
+    model.lambda_surface=1.0 \\
+    model.lambda_empty_space=1.0 \\
+    model.close_mode=zero \\
+    model/indicator_function={value} \\
+    model.gradient_compute_mode=analytical \\
+    model.gradient_eps=1e-02 \\
+    model.optimizer.lr=0.0002 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "siren_numerical_eps"
-    value = makefile_generator.generate_learning_rates(1 / 16, 6)
-    prefix = makefile_generator.convert_float_to_scientific(value)
+    group = "gradient_relu_numerical_wo_close"
+    value = ["mlp", "positional_encoding"]
+    prefix = value
     template = """
-    model/indicator_function=siren \\
+    trainer.max_epochs=200 \\
+    data.dataset.resolution=512 \\
+    data.dataset.sigma=2.0 \\
+    model/indicator_function=positional_encoding \\
+    model.optimizer.lr=1e-03 \\
+    model.lambda_gradient=1.0 \\
+    model.lambda_surface=0.0 \\
+    model.lambda_empty_space=0.0 \\
+    model.close_mode=zero \\
+    model/indicator_function={value} \\
     model.gradient_compute_mode=numerical \\
-    model.gradient_eps={value} \\
-    model.optimizer.lr=5e-05 \\
+    model.gradient_eps=1e-02 \\
+    model.optimizer.lr=0.0002 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
+
+    group = "gradient_relu_analytical_wo_close"
+    value = ["mlp"]
+    prefix = value
+    template = """
+    trainer.max_epochs=200 \\
+    data.dataset.resolution=512 \\
+    data.dataset.sigma=2.0 \\
+    model/indicator_function=positional_encoding \\
+    model.optimizer.lr=1e-03 \\
+    model.lambda_gradient=1.0 \\
+    model.lambda_surface=0.0 \\
+    model.lambda_empty_space=0.0 \\
+    model.close_mode=zero \\
+    model/indicator_function={value} \\
+    model.gradient_compute_mode=analytical \\
+    model.gradient_eps=1e-02 \\
+    model.optimizer.lr=0.0002 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
+
+    # group = "siren_numerical_eps"
+    # value = makefile_generator.generate_learning_rates(1 / 32, 4)
+    # prefix = makefile_generator.convert_float_to_scientific(value)
+    # template = """
+    # model/indicator_function=siren \\
+    # model.gradient_compute_mode=numerical \\
+    # model.gradient_eps={value} \\
+    # model.optimizer.lr=5e-05 \\
+    # """
+    # makefile_generator.add(group, template, prefix, value=value)
+
+    # group = "siren_analytical"
+    # value = ["analytical"]
+    # prefix = value
+    # template = """
+    # model/indicator_function=siren \\
+    # model.gradient_compute_mode={value} \\
+    # model.optimizer.lr=5e-05 \\
+    # """
+    # makefile_generator.add(group, template, prefix, value=value)
 
     makefile_generator.build()
 
