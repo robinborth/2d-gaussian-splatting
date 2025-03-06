@@ -175,14 +175,15 @@ def main(cfg: DictConfig):
     python neural_poisson/train.py \\
     """
     makefile_generator.default_template = """
-    trainer.max_epochs=50 \\
+    trainer.max_epochs=200 \\
     data.dataset.resolution=512 \\
     data.dataset.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
-    model.optimizer.lr=1e-03 \\
+    optimizer=adam_eps \\
+    model.optimizer.lr=5e-03 \\
     model.lambda_gradient=1.0 \\
-    model.lambda_surface=1.0 \\
-    model.lambda_empty_space=1.0 \\
+    model.lambda_surface=0.0 \\
+    model.lambda_empty_space=0.0 \\
     model.log_metrics=True \\
     model.log_images=True \\
     model.log_optimizer=True \\
@@ -201,83 +202,68 @@ def main(cfg: DictConfig):
     """
     value: Any = None
 
-    group = "full_relu_numerical_wo_close"
-    value = ["mlp", "positional_encoding"]
+    group = "tiny_analytical_grid"
+    value = ["dense_grid", "hash_grid"]
     prefix = value
     template = """
-    trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
-    model/indicator_function=positional_encoding \\
-    model.optimizer.lr=1e-03 \\
-    model.lambda_gradient=1.0 \\
-    model.lambda_surface=1.0 \\
-    model.lambda_empty_space=1.0 \\
-    model.close_mode=zero \\
+    model/indicator_function={value} \\
+    model.gradient_compute_mode=analytical \\
+    model.indicator_function.mlp.num_hidden_layers=0 \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
+
+    group = "tiny_numerical_grid"
+    value = ["dense_grid", "hash_grid"]
+    prefix = value
+    template = """
     model/indicator_function={value} \\
     model.gradient_compute_mode=numerical \\
     model.gradient_eps=1e-02 \\
-    model.optimizer.lr=0.0002 \\
+    model.indicator_function.mlp.num_hidden_layers=0 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "full_relu_analytical_wo_close"
-    value = ["mlp"]
+    group = "full_tiny_analytical_grid"
+    value = ["dense_grid", "hash_grid"]
     prefix = value
     template = """
-    trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
-    model/indicator_function=positional_encoding \\
-    model.optimizer.lr=1e-03 \\
-    model.lambda_gradient=1.0 \\
-    model.lambda_surface=1.0 \\
-    model.lambda_empty_space=1.0 \\
-    model.close_mode=zero \\
     model/indicator_function={value} \\
     model.gradient_compute_mode=analytical \\
-    model.gradient_eps=1e-02 \\
-    model.optimizer.lr=0.0002 \\
+    model.indicator_function.mlp.num_hidden_layers=0 \\
+    model.lambda_surface=1.0 \\
+    model.lambda_empty_space=1.0 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "gradient_relu_numerical_wo_close"
-    value = ["mlp", "positional_encoding"]
+    group = "full_tiny_numerical_grid"
+    value = ["dense_grid", "hash_grid"]
     prefix = value
     template = """
-    trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
-    model/indicator_function=positional_encoding \\
-    model.optimizer.lr=1e-03 \\
-    model.lambda_gradient=1.0 \\
-    model.lambda_surface=0.0 \\
-    model.lambda_empty_space=0.0 \\
-    model.close_mode=zero \\
     model/indicator_function={value} \\
     model.gradient_compute_mode=numerical \\
     model.gradient_eps=1e-02 \\
-    model.optimizer.lr=0.0002 \\
+    model.indicator_function.mlp.num_hidden_layers=0 \\
+    model.lambda_surface=1.0 \\
+    model.lambda_empty_space=1.0 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 
-    group = "gradient_relu_analytical_wo_close"
-    value = ["mlp"]
+    group = "analytical_grid"
+    value = ["dense_grid", "hash_grid"]
     prefix = value
     template = """
-    trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
-    model/indicator_function=positional_encoding \\
-    model.optimizer.lr=1e-03 \\
-    model.lambda_gradient=1.0 \\
-    model.lambda_surface=0.0 \\
-    model.lambda_empty_space=0.0 \\
-    model.close_mode=zero \\
     model/indicator_function={value} \\
     model.gradient_compute_mode=analytical \\
+    """
+    makefile_generator.add(group, template, prefix, value=value)
+
+    group = "numerical_grid"
+    value = ["dense_grid", "hash_grid"]
+    prefix = value
+    template = """
+    model/indicator_function={value} \\
+    model.gradient_compute_mode=numerical \\
     model.gradient_eps=1e-02 \\
-    model.optimizer.lr=0.0002 \\
     """
     makefile_generator.add(group, template, prefix, value=value)
 

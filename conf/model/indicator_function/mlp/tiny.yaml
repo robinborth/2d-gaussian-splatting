@@ -9,7 +9,7 @@ _partial_: True
 in_features: ???
 out_features: 1
 hidden_features: 32
-num_hidden_layers: 3
+num_hidden_layers: 2
 activation: ???
 out_activation: ???
 out_bias: False

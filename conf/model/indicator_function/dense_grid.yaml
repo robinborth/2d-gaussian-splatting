@@ -9,7 +9,7 @@ encoding:
   _target_: neural_poisson.model.encoding.DenseGridEncoding
   _partial_: True
   L: 6  # 64x64x64
-  D: 10 
+  D: 20
   domain: [-1.0, 1.0]
   init_mode: uniform
   activation: relu
