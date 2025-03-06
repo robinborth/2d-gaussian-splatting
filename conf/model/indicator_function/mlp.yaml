@@ -3,6 +3,7 @@
 defaults:
   - base
   - mlp/backbone
+  - mlp/activation/relu
 
 encoding:
   _target_: neural_poisson.model.encoding.IdentityEncoding
