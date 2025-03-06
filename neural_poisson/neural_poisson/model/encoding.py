@@ -10,10 +10,11 @@ import torch.nn as nn
 class Encoding(nn.Module):
     domain: tuple[float, float] = (-1.0, 1.0)
 
-    def check_domain(self, x: torch.Tensor):
+    def check_domain(self, x: torch.Tensor, eps: float = 1e-06):
         """Ensures that the input points are in the domain of the encoding."""
-        lower = torch.tensor(self.domain[0]).to(x)
-        upper = torch.tensor(self.domain[1]).to(x)
+
+        lower = torch.tensor(self.domain[0]).to(x) + eps
+        upper = torch.tensor(self.domain[1]).to(x) - eps
         return torch.min(torch.max(x, lower), upper)
 
     def check_output(self, x: torch.Tensor, output: torch.Tensor):
@@ -251,9 +252,10 @@ class DenseGridEncoding(GridEncoding):
     ):
         self.L = L  # resolution levels
         self.D = D  # features dimension
-        V = self.compute_voxel_size().item()
+        # (V, V, V) for each node a embedding with one additional for indexing
+        V = self.compute_voxel_size().item() + 1
         super().__init__(
-            num_embeddings=V**3,  # (V, V, V) for each node a embedding
+            num_embeddings=V**3,
             embedding_dim=D,
             domain=domain,
             init_mode=init_mode,
@@ -270,7 +272,7 @@ class DenseGridEncoding(GridEncoding):
 
     def compute_embedding_idx(self, grid_idx: torch.Tensor):
         """Convert grid_idx to embedding idxs of a flat Embedding Table."""
-        voxel_size = self.compute_voxel_size().to(self.device)
+        voxel_size = self.compute_voxel_size().to(self.device) + 1
         grid_embs_idx = grid_idx[:, :, :, 0] * voxel_size**0
         grid_embs_idx += grid_idx[:, :, :, 1] * voxel_size**1
         grid_embs_idx += grid_idx[:, :, :, 2] * voxel_size**2
@@ -320,7 +322,7 @@ class HashGridEncoding(GridEncoding):
 
     def compute_embedding_idx(self, grid_idx: torch.Tensor):
         """Convert grid_idx to embedding idxs of a flat Embedding Table."""
-        voxel_size = self.compute_voxel_size().to(self.device)
+        voxel_size = self.compute_voxel_size().to(self.device) + 1
         voxel_size = voxel_size.unsqueeze(dim=-1).unsqueeze(dim=-1)  # (L, 1, 1)
 
         # compute embeddings for the coarse resolution without collision
@@ -336,7 +338,7 @@ class HashGridEncoding(GridEncoding):
         h = torch.bitwise_xor(torch.bitwise_xor(h0, h1), h2) % self.T
 
         # for the fine resolution replace the grid_embeddings
-        colision_mask = ((voxel_size + 1) ** 3) > self.T
+        colision_mask = (voxel_size ** 3) > self.T
         colision_mask = colision_mask.squeeze(dim=-1).squeeze(dim=-1)
         grid_embs_idx[colision_mask] = h[colision_mask]
         assert grid_embs_idx.max() < self.T
