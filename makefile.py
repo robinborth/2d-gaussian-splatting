@@ -176,8 +176,8 @@ def main(cfg: DictConfig):
     """
     makefile_generator.default_template = """
     trainer.max_epochs=50 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
+    data.resolution=512 \\
+    data.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
@@ -192,10 +192,10 @@ def main(cfg: DictConfig):
     trainer.max_epochs=10 \\
     data.epoch_size=1 \\
     data.batch_size=1_000 \\
-    data.dataset.segments=4 \\
-    data.dataset.image_size=128 \\
-    data.dataset.resolution=64 \\
-    data.dataset.log_camera_idxs=[0] \\
+    data.segments=4 \\
+    data.image_size=128 \\
+    data.resolution=64 \\
+    data.log_camera_idxs=[0] \\
     model.log_mesh=False \\
     callbacks.model_checkpoint.every_n_epochs=10 \\
     """
@@ -206,8 +206,8 @@ def main(cfg: DictConfig):
     prefix = value
     template = """
     trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
+    data.resolution=512 \\
+    data.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
@@ -226,8 +226,8 @@ def main(cfg: DictConfig):
     prefix = value
     template = """
     trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
+    data.resolution=512 \\
+    data.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
@@ -246,8 +246,8 @@ def main(cfg: DictConfig):
     prefix = value
     template = """
     trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
+    data.resolution=512 \\
+    data.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\
@@ -266,8 +266,8 @@ def main(cfg: DictConfig):
     prefix = value
     template = """
     trainer.max_epochs=200 \\
-    data.dataset.resolution=512 \\
-    data.dataset.sigma=2.0 \\
+    data.resolution=512 \\
+    data.sigma=2.0 \\
     model/indicator_function=positional_encoding \\
     model.optimizer.lr=1e-03 \\
     model.lambda_gradient=1.0 \\

@@ -13,7 +13,7 @@ from neural_poisson.data.prepare import (
     select_random_points,
     select_vector_field_function,
     subsample_dataset_points,
-    uniform_sphere_cameras,
+    virtual_cameras,
 )
 from neural_poisson.data.visualize import plot_normal_maps, visualize_point_cloud
 
@@ -27,7 +27,9 @@ class ShapeNetCoreDatamodule(L.LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         persistent_workers: bool = False,
-        dataset: Dataset | None = None,
+        train_dataset: Dataset | None = None,
+        val_dataset: Dataset | None = None,
+        validation: bool = False,
         device: str = "cuda",
         **kwargs,
     ) -> None:
@@ -35,7 +37,17 @@ class ShapeNetCoreDatamodule(L.LightningDataModule):
         self.save_hyperparameters(logger=False)
 
     def setup(self, stage: str):
-        self.dataset = self.hparams["dataset"]()
+        self.train_dataset = self.hparams["train_dataset"]()
+        if self.hparams["validation"]:
+            self.val_dataset = self.hparams["val_dataset"]()
+
+    def dataset(self, mode: str = "train"):
+        if mode == "train":
+            return self.train_dataset
+        elif mode == "val":
+            return self.val_dataset
+        else:
+            raise ValueError(f"The dataset with {mode=} does not exists!")
 
     def collate_fn(self, batch):
         assert len(batch) == 1
@@ -43,7 +55,21 @@ class ShapeNetCoreDatamodule(L.LightningDataModule):
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
-            dataset=self.dataset,
+            dataset=self.train_dataset,
+            batch_size=1,
+            num_workers=self.hparams["num_workers"],
+            pin_memory=self.hparams["pin_memory"],
+            drop_last=self.hparams["drop_last"],
+            persistent_workers=self.hparams["persistent_workers"],
+            shuffle=self.hparams["shuffle"],
+            collate_fn=self.collate_fn,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        if not self.hparams["validation"]:
+            return None  # type: ignore
+        return DataLoader(
+            dataset=self.val_dataset,
             batch_size=1,
             num_workers=self.hparams["num_workers"],
             pin_memory=self.hparams["pin_memory"],
@@ -65,10 +91,12 @@ class ShapeNetCoreDataset(Dataset):
         self,
         # dataset settings
         path: str = "model_normalized.obj",
+        mode: str = "train",
         image_size: int = 256,
         segments: int = 10,
         dist: float = 1.0,
         fov: float = 60.0,
+        elev: float = 70.0,  # the elev angle
         fill_depth: str = "zfar",
         # training settings
         device: str = "cuda",
@@ -120,10 +148,12 @@ class ShapeNetCoreDataset(Dataset):
         self.finish_log()
 
         self.start_log(f"\t-> loading {segments**2} cameras ...")
-        self.cameras = uniform_sphere_cameras(
+        self.cameras = virtual_cameras(
+            mode=mode,
             dist=dist,
             fov=fov,
             segments=segments,
+            elev=elev,
             device=device,
         )
         self.finish_log()

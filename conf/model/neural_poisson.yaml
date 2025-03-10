@@ -25,7 +25,7 @@ close_steps: 100
 indicator_steps: 100
 
 # logging
-log_camera_idxs: ${data.dataset.log_camera_idxs}
+log_camera_idxs: ${data.log_camera_idxs}
 log_metrics: True
 log_images: True
 log_optimizer: True
@@ -40,5 +40,5 @@ num_points_chamfer: 100_000
 
 # marching cubes
 voxel_size: 128
-domain: ${data.dataset.domain}
+domain: ${data.domain}
 chunk_size: 10_000

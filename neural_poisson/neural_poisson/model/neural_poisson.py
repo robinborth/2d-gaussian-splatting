@@ -247,7 +247,7 @@ class NeuralPoisson(L.LightningModule):
         save_obj(path, mesh.verts_packed(), mesh.faces_packed())
 
         # log the mesh for the entire camera logs
-        dataset = self.trainer.datamodule.dataset  # type: ignore
+        dataset = self.trainer.datamodule.dataset(mode=mode)  # type: ignore
         for camera_idx in dataset.log_camera_idxs:
             normal_map = dataset.normal_maps[camera_idx].detach().cpu().numpy()
             indicator_map = dataset.indicator_maps[camera_idx].detach().cpu().numpy()
@@ -488,9 +488,10 @@ class NeuralPoisson(L.LightningModule):
             self.logging_mesh(batch, "train")
         return output["total_loss"]
 
-    # def validation_step(self, batch: dict, batch_idx: int):
-    #     """Perform training step."""
-    #     output = self.model_step(batch)
-    #     if self.check_logging("metrics", batch_idx):
-    #         self.logging_metrics(batch, output, "val")
-    #     return output["total_loss"]
+    @torch.enable_grad()
+    def validation_step(self, batch: dict, batch_idx: int):
+        """Perform training step."""
+        output = self.model_step(batch)
+        if self.check_logging("metrics", batch_idx):
+            self.logging_metrics(batch, output, "val")
+        return output["total_loss"]

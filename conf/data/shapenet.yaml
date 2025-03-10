@@ -6,6 +6,7 @@ shapenet_id: 1a04e3eab45ca15dd86060f189eb133
 data_dir: ${paths.data_dir}/ShapeNetCore/02691156/${data.shapenet_id}
 
 # training settings
+validation: True
 batch_size: 50_000
 epoch_size: 100
 num_workers: 0
@@ -15,39 +16,117 @@ persistent_workers: False
 shuffle: True
 
 # dataset settings
-dataset:
+path: ${data.data_dir}/models/model_normalized.obj
+dist: 2.0
+fov: 30.0
+image_size: 256
+segments: 12
+elev: 70.0
+fill_depth: max2  # "zfar", "max", "max(d)"
+
+# training settings
+surface_chunk_factor: 1.0
+close_chunk_factor: 0.5
+empty_chunk_factor: 0.5
+use_full_chunk: False
+
+# subsampling settings
+resolution: 512
+domain: [-1.0, 1.0]
+max_surface_points: 100_000
+max_close_points: 100_000
+max_empty_points: 100_000
+
+# empty space sampling
+empty_points_per_ray: 4
+close_points_per_ray: 2
+close_points_surface_threshold: 0.01
+
+# vector field settings 
+vector_field_mode: k_nearest_neighbors  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
+vector_field_chunk_size: 1_000
+k: 10
+sigma: 2.0
+chunk_threshold:  30
+
+# logging settings
+log_camera_idxs: [7,13,29,97]  # [7,13,29,97]
+
+# dataset settings
+train_dataset:
   _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
   _partial_: True
   # dataset settings
   path: ${data.data_dir}/models/model_normalized.obj
-  dist: 2.0
-  fov: 30.0
-  image_size: 256
-  segments: 12
-  fill_depth: max2  # "zfar", "max", "max(d)"
+  mode: train
+  dist: ${data.dist}
+  fov: ${data.fov}
+  image_size: ${data.image_size}
+  segments: ${data.segments}
+  fill_depth: ${data.fill_depth}
   # training settings
   device: ${device}
   num_chunks: ${data.epoch_size}
   chunk_size: ${data.batch_size}
-  surface_chunk_factor: 1.0
-  close_chunk_factor: 0.5
-  empty_chunk_factor: 0.5
-  use_full_chunk: False
+  surface_chunk_factor: ${data.surface_chunk_factor}
+  close_chunk_factor: ${data.close_chunk_factor}
+  empty_chunk_factor: ${data.empty_chunk_factor}
+  use_full_chunk:  ${data.use_full_chunk}
   # subsampling settings
-  resolution: 512
-  domain: [-1.0, 1.0]
-  max_surface_points: 100_000
-  max_close_points: 100_000
-  max_empty_points: 100_000
+  resolution: ${data.resolution}
+  domain: ${data.domain}
+  max_surface_points: ${data.max_surface_points}
+  max_close_points: ${data.max_close_points}
+  max_empty_points: ${data.max_empty_points}
   # empty space sampling
-  empty_points_per_ray: 4
-  close_points_per_ray: 2
-  close_points_surface_threshold: 0.01
+  empty_points_per_ray: ${data.empty_points_per_ray}
+  close_points_per_ray: ${data.close_points_per_ray}
+  close_points_surface_threshold: ${data.close_points_surface_threshold}
   # vector field settings 
-  vector_field_mode: k_nearest_neighbors  # "nearest_neighbor", "k_nearest_neighbors", "cluster"
-  vector_field_chunk_size: 1_000
-  k: 10
-  sigma: 2.0
-  chunk_threshold:  30
+  vector_field_mode: ${data.vector_field_mode}
+  vector_field_chunk_size: ${data.vector_field_chunk_size}
+  k: ${data.k}
+  sigma: ${data.sigma}
+  chunk_threshold: ${data.chunk_threshold}
   # logging settings
-  log_camera_idxs: [7,13,29,97]  # [7,13,29,97]
+  log_camera_idxs: ${data.log_camera_idxs}
+
+
+# dataset settings
+val_dataset:
+  _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
+  _partial_: True
+  # dataset settings
+  path: ${data.data_dir}/models/model_normalized.obj
+  mode: val
+  dist: ${data.dist}
+  fov: ${data.fov}
+  image_size: ${data.image_size}
+  segments: ${data.segments}
+  fill_depth: ${data.fill_depth}
+  # training settings
+  device: ${device}
+  num_chunks: 1 
+  chunk_size: ${data.batch_size}
+  surface_chunk_factor: ${data.surface_chunk_factor}
+  close_chunk_factor: ${data.close_chunk_factor}
+  empty_chunk_factor: ${data.empty_chunk_factor}
+  use_full_chunk:  ${data.use_full_chunk}
+  # subsampling settings
+  resolution: ${data.resolution}
+  domain: ${data.domain}
+  max_surface_points: ${data.max_surface_points}
+  max_close_points: ${data.max_close_points}
+  max_empty_points: ${data.max_empty_points}
+  # empty space sampling
+  empty_points_per_ray: ${data.empty_points_per_ray}
+  close_points_per_ray: ${data.close_points_per_ray}
+  close_points_surface_threshold: ${data.close_points_surface_threshold}
+  # vector field settings 
+  vector_field_mode: ${data.vector_field_mode}
+  vector_field_chunk_size: ${data.vector_field_chunk_size}
+  k: ${data.k}
+  sigma: ${data.sigma}
+  chunk_threshold: ${data.chunk_threshold}
+  # logging settings
+  log_camera_idxs: ${data.log_camera_idxs}

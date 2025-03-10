@@ -342,15 +342,20 @@ def extract_points_data(
 ################################################################################
 
 
-def uniform_sphere_cameras(
+def virtual_cameras(
+    mode: str = "train",
     dist: float = 1.0,
     fov: float = 60,
     segments: int = 10,
+    elev: float = 70.0,
     device: str = "cuda",
 ):
     cameras = []
-    elevs = torch.linspace(0, 360, segments + 1)[:segments]
     azims = torch.linspace(0, 360, segments + 1)[:segments]
+    elevs = torch.linspace(-elev, elev, segments)[:segments]
+    if mode == "val":
+        elevs += elev / segments
+        azims += (360 / segments) / 2
     for elev in elevs:
         for azim in azims:
             R, T = look_at_view_transform(dist, elev, azim)
