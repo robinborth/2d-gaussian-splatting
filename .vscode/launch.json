@@ -8,7 +8,7 @@
             "program": "neural_poisson/train.py",
             "args": [
                 "data=debug",
-                "data.validation=True",
+                "trainer=debug",
             ],
             "console": "integratedTerminal",
             "justMyCode": false,

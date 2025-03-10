@@ -3,6 +3,7 @@ import random
 import time
 
 import lightning as L
+from lightning.pytorch.utilities.exceptions import MisconfigurationException
 from torch.utils.data import DataLoader, Dataset
 
 from neural_poisson.data.prepare import (
@@ -67,7 +68,7 @@ class ShapeNetCoreDatamodule(L.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         if not self.hparams["validation"]:
-            return None  # type: ignore
+            raise MisconfigurationException("Disable validation!")
         return DataLoader(
             dataset=self.val_dataset,
             batch_size=1,
