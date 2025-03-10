@@ -16,7 +16,6 @@ persistent_workers: False
 shuffle: True
 
 # dataset settings
-path: ${data.data_dir}/models/model_normalized.obj
 dist: 2.0
 fov: 30.0
 image_size: 256
@@ -57,7 +56,7 @@ train_dataset:
   _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
   _partial_: True
   # dataset settings
-  path: ${data.data_dir}/models/model_normalized.obj
+  path: ${data.data_dir}/models
   mode: train
   dist: ${data.dist}
   fov: ${data.fov}
@@ -97,7 +96,7 @@ val_dataset:
   _target_: neural_poisson.data.shapenet.ShapeNetCoreDataset
   _partial_: True
   # dataset settings
-  path: ${data.data_dir}/models/model_normalized.obj
+  path: ${data.data_dir}/models
   mode: val
   dist: ${data.dist}
   fov: ${data.fov}

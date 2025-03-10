@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from pathlib import Path
 
 import lightning as L
 from lightning.pytorch.utilities.exceptions import MisconfigurationException
@@ -11,6 +12,7 @@ from neural_poisson.data.prepare import (
     extract_points_data,
     load_mesh,
     map_to_domain,
+    sample_points_inside_surface,
     select_random_points,
     select_vector_field_function,
     subsample_dataset_points,
@@ -113,6 +115,7 @@ class ShapeNetCoreDataset(Dataset):
         max_surface_points: int = 100_000,
         max_close_points: int = 100_000,
         max_empty_points: int = 100_000,
+        max_inside_points: int = 100_000,
         # empty space sampling
         empty_points_per_ray: int = 4,
         close_points_per_ray: int = 2,
@@ -145,7 +148,17 @@ class ShapeNetCoreDataset(Dataset):
         self.log_time = log_time
 
         self.start_log(f"\t-> loading mesh from {path} ...")
-        self.mesh = load_mesh(path, device=device)
+        self.mesh_path = str(Path(path) / "model_normalized.obj")
+        self.mesh = load_mesh(self.mesh_path, device=device)
+        self.finish_log()
+
+        self.start_log("\t-> loading surface data ...")
+        points_inside = sample_points_inside_surface(
+            shapenet_path=path,
+            max_samples=max_inside_points,
+            device=device,
+        )
+        self.points_inside = points_inside
         self.finish_log()
 
         self.start_log(f"\t-> loading {segments**2} cameras ...")
@@ -218,6 +231,7 @@ class ShapeNetCoreDataset(Dataset):
         self.vectors_surface = self.vector_fn(query=points_surface)
         self.vectors_close = self.vector_fn(query=points_close)
         self.vectors_empty = self.vector_fn(query=points_empty)
+        self.vectors_inside = self.vector_fn(query=points_inside)
         self.finish_log()
 
         self.start_log("\t-> evaluate the camera vector maps ...")
@@ -317,9 +331,11 @@ class ShapeNetCoreDataset(Dataset):
             "points_surface": self.chunks["points_surface"][idx].detach().clone(),
             "points_close": self.chunks["points_close"][idx].detach().clone(),
             "points_empty": self.chunks["points_empty"][idx].detach().clone(),
+            "points_inside": self.points_inside.detach().clone(),
             "vectors_surface": self.chunks["vectors_surface"][idx].detach().clone(),
             "vectors_close": self.chunks["vectors_close"][idx].detach().clone(),
             "vectors_empty": self.chunks["vectors_empty"][idx].detach().clone(),
+            "vectors_inside": self.vectors_inside.detach().clone(),
             # camera information
             "camera_idx": camera_idx,
             "camera": self.cameras[camera_idx],

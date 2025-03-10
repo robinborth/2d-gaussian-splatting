@@ -3,6 +3,7 @@ import math
 import random
 from collections import defaultdict
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import open3d as o3d
@@ -16,6 +17,8 @@ from pytorch3d.renderer import (
     look_at_view_transform,
 )
 from pytorch3d.structures import Meshes
+
+from neural_poisson.data.binovox import read_as_3d_array
 
 log = logging.getLogger()
 
@@ -335,6 +338,43 @@ def extract_points_data(
         "point_maps": point_maps,  # (B, H, W, 3)
         "masks": masks,  # (B, H, W, 3)
     }
+
+
+def sample_points_inside_surface(
+    shapenet_path: str,
+    max_samples: int = 100_000,
+    device: str = "cuda",
+):
+    shapenet_dir = Path(shapenet_path)
+    # load the surface voxelization
+    surface_path = shapenet_dir / "model_normalized.surface.binvox"
+    with open(str(surface_path), "rb") as f:
+        surface = read_as_3d_array(f)
+
+    # load the solid voxelization
+    solid_path = shapenet_dir / "model_normalized.solid.binvox"
+    with open(str(solid_path), "rb") as f:
+        solid = read_as_3d_array(f)
+
+    # compute the inside voxels
+    inside = (~surface.data) & solid.data
+    voxel_size = inside.shape[0]
+
+    # compute the axis
+    i_n = ((np.linspace(0, voxel_size, voxel_size)) + 0.5) / voxel_size
+    xs = surface.scale * i_n + surface.translate[0]
+    ys = surface.scale * i_n + surface.translate[1]
+    zs = surface.scale * i_n + surface.translate[2]
+
+    # compute the grid in world space of the mesh
+    xs, ys, zs = np.meshgrid(xs, ys, zs, indexing="ij")
+    grid = np.stack((xs.ravel(), ys.ravel(), zs.ravel()), axis=-1)
+    grid = grid.reshape(voxel_size, voxel_size, voxel_size, 3)
+
+    # compute the points on the grid
+    inside_points = grid[inside]
+    idx = np.random.permutation(len(inside_points))[:max_samples]
+    return torch.tensor(inside_points[idx], device=device, dtype=torch.float32)
 
 
 ################################################################################
