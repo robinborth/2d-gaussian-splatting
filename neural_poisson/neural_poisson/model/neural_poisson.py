@@ -187,9 +187,9 @@ class NeuralPoisson(L.LightningModule):
 
         # log the axis
         name = f"Image-Axis ({mode})"
-        imgX = self.compute_axis("x").detach().cpu().numpy()
-        imgY = self.compute_axis("y").detach().cpu().numpy()
-        imgZ = self.compute_axis("z").detach().cpu().numpy()
+        imgX = self.compute_axis("x").detach().cpu().numpy() - self.X_offset
+        imgY = self.compute_axis("y").detach().cpu().numpy() - self.X_offset
+        imgZ = self.compute_axis("z").detach().cpu().numpy() - self.X_offset
         self.logger.log_image(f"{name}/x", [imgX])  # type: ignore
         self.logger.log_image(f"{name}/y", [imgY])  # type: ignore
         self.logger.log_image(f"{name}/z", [imgZ])  # type: ignore
