@@ -210,6 +210,10 @@ class MultiLayerPerceptron(nn.Sequential):
         if self.last_layer_weight_init is not None:
             self.layer_out.apply(self.last_layer_weight_init)
 
+    @property
+    def device(self):
+        return self.layer_in.weight.device
+
     def forward(self, x: torch.Tensor):
         """Returns the output before the activation and afte the activation."""
         logit = None

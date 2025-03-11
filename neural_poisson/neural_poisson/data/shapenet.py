@@ -13,6 +13,7 @@ from neural_poisson.data.prepare import (
     load_mesh,
     map_to_domain,
     sample_points_inside_surface,
+    scale_mesh,
     select_random_points,
     select_vector_field_function,
     subsample_dataset_points,
@@ -112,6 +113,7 @@ class ShapeNetCoreDataset(Dataset):
         # subsampling settings
         resolution: int = 256,  # in voxels
         domain: tuple[float, float] = (-1.0, 1.0),
+        domain_margin: float = 0.05,
         max_surface_points: int = 100_000,
         max_close_points: int = 100_000,
         max_empty_points: int = 100_000,
@@ -149,7 +151,8 @@ class ShapeNetCoreDataset(Dataset):
 
         self.start_log(f"\t-> loading mesh from {path} ...")
         self.mesh_path = str(Path(path) / "model_normalized.obj")
-        self.mesh = load_mesh(self.mesh_path, device=device)
+        mesh = load_mesh(self.mesh_path, device=device)
+        self.mesh, mesh_scale = scale_mesh(mesh, domain, domain_margin)
         self.finish_log()
 
         self.start_log("\t-> loading surface data ...")
@@ -158,6 +161,7 @@ class ShapeNetCoreDataset(Dataset):
             max_samples=max_inside_points,
             device=device,
         )
+        points_inside *= mesh_scale  # scale the mesh
         self.points_inside = points_inside
         self.finish_log()
 

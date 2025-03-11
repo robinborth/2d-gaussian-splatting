@@ -10,3 +10,4 @@ encoding:
   _partial_: True
   L: 10
   activation: relu
+  domain: ${data.domain}

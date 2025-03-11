@@ -8,8 +8,6 @@ import torch.nn as nn
 
 
 class Encoding(nn.Module):
-    domain: tuple[float, float] = (-1.0, 1.0)
-
     def check_domain(self, x: torch.Tensor, eps: float = 1e-06):
         """Ensures that the input points are in the domain of the encoding."""
 
@@ -34,6 +32,10 @@ class Encoding(nn.Module):
 
 
 class IdentityEncoding(Encoding):
+    def __init__(self, domain: tuple[float, float] = (-1.0, 1.0)):
+        super().__init__()
+        self.domain = domain
+
     def compute_output_dim(self):
         """Compute the final output dimension of the embedding."""
         return 3
@@ -338,7 +340,7 @@ class HashGridEncoding(GridEncoding):
         h = torch.bitwise_xor(torch.bitwise_xor(h0, h1), h2) % self.T
 
         # for the fine resolution replace the grid_embeddings
-        colision_mask = (voxel_size ** 3) > self.T
+        colision_mask = (voxel_size**3) > self.T
         colision_mask = colision_mask.squeeze(dim=-1).squeeze(dim=-1)
         grid_embs_idx[colision_mask] = h[colision_mask]
         assert grid_embs_idx.max() < self.T

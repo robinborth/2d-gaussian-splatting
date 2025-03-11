@@ -1,17 +1,15 @@
 import time
 from pathlib import Path
+from typing import Any
 
 import lightning as L
+import numpy as np
 import torch
 import wandb
-from pytorch3d.io import save_obj
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops import sample_points_from_meshes
-from pytorch3d.ops.marching_cubes import marching_cubes
-from pytorch3d.structures import Meshes
 
-from neural_poisson.data.grid import coord_grid, coord_grid_along_axis
-from neural_poisson.data.prepare import extract_surface_data
+from neural_poisson.data.prepare import extract_surface_data, save_mesh_pytorch3d
 from neural_poisson.model.implicit import IndicatorFunction
 
 
@@ -20,6 +18,7 @@ class NeuralPoisson(L.LightningModule):
         self,
         # encoder module either MLP, DenseGrid, etc.
         indicator_function: IndicatorFunction,
+        mode: str = "default",  # "default", "center"
         gradient_compute_mode: str = "analytical",  # "analytical", "numerical"
         gradient_eps: float = 1e-08,
         # loss settings
@@ -49,20 +48,40 @@ class NeuralPoisson(L.LightningModule):
         resolution: int = 256,
         domain: tuple[float, float] = (-1.0, 1.0),
         chunk_size: int = 10_000,
+        otsu_bins: int = 128,
         # training settings
         optimizer=None,
         scheduler=None,
+        monitor: str = "train/loss",
         **kwargs,
     ):
         super().__init__()
         self.save_hyperparameters(logger=False)
         self.indicator_function = indicator_function()
-        self.X_offset = self.indicator_function.X_offset
-        self.isolevel = self.indicator_function.isolevel
+
+        # for default: [0,1] - for center: [-0.5, 0.5]
+        assert mode in ["default", "center"]
+        self.X_offset = -0.5 if mode == "center" else 0.0
+        self.mode = mode
 
     ################################################################################
     # Optimizer Utils
     ################################################################################
+
+    @property
+    def optimizer(self) -> torch.optim.Optimizer:
+        return self.optimizers()._optimizer  # type: ignore
+
+    @property
+    def optimizer_state(self) -> dict[Any, Any]:
+        state = self.optimizer.state_dict()["state"]
+        if state:
+            return state[0]
+        return {}
+
+    @property
+    def optimizer_param_group(self) -> dict[str, Any]:
+        return self.optimizer.param_groups[0]
 
     def configure_optimizers(self):
         """Default lightning optimizer setup."""
@@ -73,13 +92,26 @@ class NeuralPoisson(L.LightningModule):
             return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
         return {"optimizer": optimizer}
 
+    ################################################################################
+    # Data Utils
+    ################################################################################
+
+    @property
+    def datamodule(self) -> Any:
+        return self.trainer.datamodule  # type: ignore
+
+    ################################################################################
+    # Scheduling Utils
+    ################################################################################
+
     def scheduler_step(self, key: str):
+        # extract and return default values
         mode = self.hparams[f"{key}_mode"]
         if mode == "zero":
             return 0.0
         if mode == "one":
             return 1.0
-
+        # linear interpolation
         steps = self.hparams[f"{key}_steps"]
         t = max(min(self.trainer.global_step / steps, 1.0), 0.0)  # [0.0, 1.0]
         if mode == "decrease":
@@ -88,54 +120,55 @@ class NeuralPoisson(L.LightningModule):
             return t
         raise AttributeError(f"There is a wrong {mode=}!")
 
-    ################################################################################
-    # Loss Computation
-    ################################################################################
-
-    def l2_loss(self, x: torch.Tensor):
-        """Simple L2-Loss."""
-        if x.numel() == 0:
-            return 0.0
-        return (x**2).mean()
-
-    ################################################################################
-    # Logging
-    ################################################################################
-
-    def compute_axis(self, axis: str = "x", voxel_size: int = 256):
-        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
-        grid = coord_grid_along_axis(
-            axis=axis,
-            voxel_size=N,
-            domain=self.hparams["domain"],
-            default_coord=0.0,
-            device=self.device,
+    def check_logging(self, mode: str = "metrics", batch_idx: int = 0):
+        if f"log_{mode}_every_n_steps" in self.hparams:
+            return (
+                batch_idx % self.hparams[f"log_{mode}_every_n_steps"] == 0
+                and self.hparams[f"log_{mode}"]
+            )
+        return (
+            self.trainer.current_epoch % self.hparams[f"log_{mode}_every_n_epochs"] == 0
+            and batch_idx == (self.trainer.num_training_batches - 1)
+            and self.hparams[f"log_{mode}"]
         )
-        # evaluate the indicator function
-        x, _ = self.forward(grid)
-        return x
 
-    def compute_basic_stats(self, points: torch.Tensor, name: str):
+    ################################################################################
+    # Logging Utils
+    ################################################################################
+
+    def log_video(self, name: str, frames: torch.Tensor, fps: int = 60):
+        frames = (frames * 255).to(torch.uint8)  # (F, C, H, W)
+        video = wandb.Video(frames, fps=60)  # type: ignore
+        self.logger.experiment.log({name: video})  # type: ignore
+
+    def log_image(self, name: str, image: torch.Tensor):
+        img = wandb.Image(image.detach().cpu().numpy())
+        self.logger.log_image(name, [img])  # type: ignore
+
+    def log_histogram(self, name: str, x: torch.Tensor, bins: int = 10):
+        hist = np.histogram(x.flatten().detach().cpu().numpy(), bins=bins)
+        histogram = wandb.Histogram(np_histogram=hist)
+        self.logger.experiment.log({name: histogram})  # type: ignore
+
+    def log_histograms(self, histograms: dict[str, torch.Tensor], bins: int = 10):
+        histogram = {}
+        for name, x in histograms.items():
+            hist = np.histogram(x.flatten().detach().cpu().numpy(), bins=bins)
+            histogram[name] = wandb.Histogram(np_histogram=hist)
+        self.logger.experiment.log(histogram)  # type: ignore
+
+    def compute_basic_stats(self, x: torch.Tensor, name: str):
         stats = {}
-        points_norm = torch.linalg.vector_norm(points, dim=-1)
+        points_norm = torch.linalg.vector_norm(x, dim=-1)
         if points_norm.numel():
             stats[f"{name}_mean"] = points_norm.mean()
             stats[f"{name}_min"] = points_norm.min()
             stats[f"{name}_max"] = points_norm.max()
         return stats
 
-    def check_logging(self, mode: str = "metrics", batch_idx: int = 0):
-        if mode == "mesh":
-            log_epochs = self.hparams[f"log_{mode}_every_n_epochs"]
-            return (
-                self.trainer.current_epoch % log_epochs == 0
-                and batch_idx == (self.trainer.num_training_batches - 1)
-                and self.hparams[f"log_{mode}"]
-            )
-        return (
-            batch_idx % self.hparams[f"log_{mode}_every_n_steps"] == 0
-            and self.hparams[f"log_{mode}"]
-        )
+    ################################################################################
+    # Logging Scripts
+    ################################################################################
 
     def logging_metrics(self, batch: dict, output: dict, mode: str = "train"):
         self.log(f"{mode}/loss", output["total_loss"], prog_bar=True, logger=False)
@@ -180,58 +213,74 @@ class NeuralPoisson(L.LightningModule):
         # perform the logging
         self.log_dict(unified_output, prog_bar=False)
 
-    def logging_images(self, batch: dict, mode: str = "train"):
+    def logging_images(self, batch: dict, output: dict, mode: str = "train"):
         # compute the gradient of the indicator function on the point map
         point_map = batch["point_map"].requires_grad_(True)
         x_point_map, _ = self.forward(points=point_map)
 
-        # log the axis
-        name = f"Image-Axis ({mode})"
-        imgX = self.compute_axis("x").detach().cpu().numpy() - self.X_offset
-        imgY = self.compute_axis("y").detach().cpu().numpy() - self.X_offset
-        imgZ = self.compute_axis("z").detach().cpu().numpy() - self.X_offset
-        self.logger.log_image(f"{name}/x", [imgX])  # type: ignore
-        self.logger.log_image(f"{name}/y", [imgY])  # type: ignore
-        self.logger.log_image(f"{name}/z", [imgZ])  # type: ignore
-
         # log the images
         name = f"Image-{batch['camera_idx']:03} ({mode})"
-        img_X = wandb.Image(x_point_map.detach().cpu().numpy() - self.X_offset)
-        img_X_gt = wandb.Image(batch["indicator_map"].detach().cpu().numpy())
-        self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
-        self.logger.log_image(f"{name}/indicator_gt", [img_X_gt])  # type: ignore
+        self.log_image(f"{name}/indicator", x_point_map)
+        self.log_image(f"{name}/indicator_gt", batch["indicator_map"])
 
         # compute the normal and vector maps
         dX_point_map = self.compute_gradient(point_map, x_point_map)
-        img_dX = wandb.Image(dX_point_map.detach().cpu().numpy())
-        img_dX_gt = wandb.Image(batch["vector_map"].detach().cpu().numpy())
-        img_N_gt = wandb.Image(batch["normal_map"].detach().cpu().numpy())
-        self.logger.log_image(f"{name}/vector", [img_dX])  # type: ignore
-        self.logger.log_image(f"{name}/vector_gt", [img_dX_gt])  # type: ignore
-        self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
+        self.log_image(f"{name}/vector", dX_point_map)
+        self.log_image(f"{name}/vector_gt", batch["vector_map"])
+        self.log_image(f"{name}/normal_gt", batch["normal_map"])
 
-    def logging_optimizer(self, mode: str = "train"):
-        # extreact the information from the training
-        optimizer = self.optimizers()._optimizer  # type: ignore
-        if self.global_step == 0 or not optimizer.state_dict()["state"]:
-            return
+        # log the axis with the raw values
+        bins = self.hparams["otsu_bins"]
+        for axis in ["x", "y", "z"]:
+            # continuos indicator function
+            x = self.indicator_function.compute_axis(axis)
+            self.log_image(f"Image-Axis ({mode})/{axis}", x)
+            # hard threshold indicator function
+            threshold = self.indicator_function.otsu_threshold(x, L=bins)
+            X = self.indicator_function.indicator(x, threshold=threshold)
+            self.log_image(f"Image Otsu ({mode})/{axis}", X)
+            self.log_histogram(f"Histogram Otsu ({mode})/{axis}", x, bins=bins)
 
-        # extract the state dict and param groups
-        layer = 0
-        state = optimizer.state_dict()["state"][layer]
-        params = optimizer.param_groups[0]
+    def logging_optimizer(self):
+        # log the histogram of the optimizer
+        histograms = {}
+        for name, param in self.indicator_function.mlp.named_parameters():
+            # log the wandb gradients as histograms
+            if param.grad is not None:
+                histograms[f"Gradients Histogram/{name}"] = param.grad.data
+            # log the weights distribution of the layers
+            histograms[f"Weights Histogram/{name}"] = param.data
+        self.log_histograms(histograms)
 
-        m_hat_t = state["exp_avg"] / (1 - params["betas"][0] ** state["step"])
-        v_hat_t = state["exp_avg_sq"] / (1 - params["betas"][1] ** state["step"])
-        lr_modifier = m_hat_t / (torch.sqrt(v_hat_t) + params["eps"])
-        histogram = wandb.Histogram(lr_modifier.detach().cpu())
-        self.logger.experiment.log({"Learning Rate Modifier": histogram})  # type: ignore
+        # specifi logging for adam optimizer
+        if self.optimizer_state:
+            state = self.optimizer_state
+            params = self.optimizer_param_group
+            m_hat_t = state["exp_avg"] / (1 - params["betas"][0] ** state["step"])
+            v_hat_t = state["exp_avg_sq"] / (1 - params["betas"][1] ** state["step"])
+            lr_modifier = m_hat_t / (torch.sqrt(v_hat_t) + params["eps"])
+            self.log_histogram("Learning Rate Modifier", lr_modifier)
+
+    def log_axis_video(self, grid: torch.Tensor, dim: str = "x"):
+        D = grid.shape[0]
+        if dim == "x":
+            frames = grid[None].permute(1, 0, 2, 3).expand(D, 3, D, D)
+        if dim == "y":
+            frames = grid[None].permute(2, 0, 1, 3).expand(D, 3, D, D)
+        if dim == "z":
+            frames = grid[None].permute(3, 0, 1, 2).expand(D, 3, D, D)
+        self.log_video(f"Mesh Slicing Video/{dim}", frames)
 
     def logging_mesh(self, batch: dict, mode: str = "train"):
         # compute the mesh (slow)
-        mesh = self.to_mesh()
-        if mesh is None:
-            return
+        mesh, grid = self.indicator_function.marching_cubes(
+            voxel_size=self.hparams["voxel_size"],
+            isolevel=0.5,  # 0.0 -> 0.5 -> 1.0
+        )
+
+        # logging axis videos
+        for axis in ["x", "y", "z"]:
+            self.log_axis_video(grid=grid, dim=axis)
 
         # compute chamfer distance
         chamfer_samples = self.hparams["num_points_chamfer"]
@@ -240,111 +289,42 @@ class NeuralPoisson(L.LightningModule):
         loss, _ = chamfer_distance(p1, p2)
         self.log(f"Metrics ({mode})/chamfer", loss, prog_bar=False)
 
-        # save the mesh
+        # save the mesh to disk
         file_name = f"epoch_{self.trainer.current_epoch:05}.obj"
         path = Path(self.trainer.default_root_dir) / f"mesh/{file_name}"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        save_obj(path, mesh.verts_packed(), mesh.faces_packed())
+        save_mesh_pytorch3d(path=path, mesh=mesh)
 
         # log the mesh for the entire camera logs
-        dataset = self.trainer.datamodule.dataset(mode=mode)  # type: ignore
+        dataset = self.datamodule.dataset(mode=mode)
         for camera_idx in dataset.log_camera_idxs:
-            normal_map = dataset.normal_maps[camera_idx].detach().cpu().numpy()
-            indicator_map = dataset.indicator_maps[camera_idx].detach().cpu().numpy()
             data = extract_surface_data(
                 camera=dataset.cameras[camera_idx],
                 mesh=mesh,
                 image_size=dataset.image_size,
                 fill_depth=dataset.fill_depth,
             )
-            # log mesh images
             name = f"Mesh-{camera_idx:03} ({mode})"
-            img_N = wandb.Image(data["normal_map"].detach().cpu().numpy())
-            img_X = wandb.Image(data["indicator_map"].detach().cpu().numpy())
-            img_N_gt = wandb.Image(normal_map)
-            img_X_gt = wandb.Image(indicator_map)
-            self.logger.log_image(f"{name}/normal", [img_N])  # type: ignore
-            self.logger.log_image(f"{name}/normal_gt", [img_N_gt])  # type: ignore
-            self.logger.log_image(f"{name}/indicator", [img_X])  # type: ignore
-            self.logger.log_image(f"{name}/indicator_gt", [img_X_gt])  # type: ignore
-
-    def on_before_optimizer_step(self, optimizer):
-        log_steps = self.hparams["log_optimizer_every_n_steps"]
-        batch_idx = self.trainer.global_step % log_steps
-        if not self.check_logging("optimizer", batch_idx):
-            return
-
-        # log the wandb gradients as histograms
-        histograms = {}
-        for name, p in self.indicator_function.mlp.named_parameters():
-            if p.grad is None:
-                continue
-            h = wandb.Histogram(p.grad.data.detach().cpu())
-            histograms[f"Gradients Histogram/{name}"] = h
-        self.logger.experiment.log(histograms)
-
-        # log the weights distribution of the layers
-        histograms = {}
-        for name, p in self.indicator_function.mlp.named_parameters():
-            h = wandb.Histogram(p.data.detach().cpu())
-            histograms[f"Weights Histogram/{name}"] = h
-        self.logger.experiment.log(histograms)
-
-    def log_video(self, sdf_grid: torch.Tensor, dim: str = "x"):
-        D = sdf_grid.shape[0]
-        volume = sdf_grid - self.X_offset
-        if dim == "x":
-            volume = sdf_grid[None].permute(1, 0, 2, 3).expand(D, 3, D, D)
-        if dim == "y":
-            volume = sdf_grid[None].permute(2, 0, 1, 3).expand(D, 3, D, D)
-        if dim == "z":
-            volume = sdf_grid[None].permute(3, 0, 1, 2).expand(D, 3, D, D)
-        video = wandb.Video((volume * 255).to(torch.uint8), fps=60)  # type: ignore
-        self.logger.experiment.log({f"Mesh Slicing Video/{dim}": video})  # type: ignore
+            self.log_image(f"{name}/normal", data["normal_map"])
+            self.log_image(f"{name}/normal_gt", dataset.normal_maps[camera_idx])
+            self.log_image(f"{name}/indicator", data["indicator_map"])
+            self.log_image(f"{name}/indicator_gt", dataset.indicator_maps[camera_idx])
 
     ################################################################################
-    # Mesh Extraction
+    # Loss Computation
     ################################################################################
 
-    def to_mesh(self, voxel_size: int | None = None):
-        # prepare the evaluation
-        self.eval()
-
-        # fetch the point on the grid lattice
-        N = self.hparams["voxel_size"] if voxel_size is None else voxel_size
-        grid = coord_grid(voxel_size=N, domain=self.hparams["domain"]).reshape(-1, 3)
-
-        # evaluate the indicator function on the grid structure
-        sdfs = []
-        for points in torch.split(grid, self.hparams["chunk_size"]):
-            x, _ = self.forward(points.to(self.device))
-            # convert indicator to "sdf" value, where negative is inside
-            sdfs.append(-x.detach().cpu())
-        sdf_grid = torch.cat(sdfs).reshape(N, N, N)
-
-        # log the slice of the mesh
-        # for dim in ["x", "y", "z"]:
-        #     self.log_video(sdf_grid=sdf_grid, dim=dim)
-
-        # ensures that we have a valid isolevel and can extract a mesh
-        isolevel = self.isolevel
-        if isolevel > sdf_grid.max() or isolevel < sdf_grid.min():
-            isolevel = (sdf_grid.max().item() - sdf_grid.min().item()) / 2
-
-        # perform marching cubes
-        sdf_grid = sdf_grid.permute(2, 1, 0)[None]  # (W,H,D) -> (1,D,H,W)
-        verts, faces = marching_cubes(sdf_grid, isolevel=isolevel)
-
-        # wrap into a pytorch3d mesh
-        if not len(verts[0]):
-            return None
-        return Meshes(verts=verts, faces=faces).to(self.device)
+    def l2_loss(self, x: torch.Tensor):
+        """Simple L2-Loss."""
+        if x.numel() == 0:
+            return 0.0
+        return (x**2).mean()
 
     ################################################################################
     # Training Methods
     ################################################################################
 
     def compute_gradient(self, points: torch.Tensor, X: torch.Tensor):
+        """Compute the gradient w.r.t. to the points."""
         return self.indicator_function.compute_gradient(
             points=points,
             field_values=X,
@@ -354,8 +334,7 @@ class NeuralPoisson(L.LightningModule):
 
     def forward(self, points: torch.Tensor):
         """Evaluates the indicator function for the given points."""
-        X, logits = self.indicator_function(points)
-        return X, logits
+        return self.indicator_function(points)  # X, logits
 
     def model_step(self, batch: dict):
         # extract the batch information
@@ -397,18 +376,16 @@ class NeuralPoisson(L.LightningModule):
         # surface constraint
         L_surface = 0.0
         if self.hparams["lambda_surface"]:
-            L_surface = self.l2_loss(x_surface - self.X_offset - 0.5)
+            L_surface = self.l2_loss(x_surface - 0.5)
 
         # empty space constraint
         L_empty_space = 0.0
         L_empty_space_close = 0.0
         L_empty_space_empty = 0.0
         if self.hparams["lambda_empty_space"]:
-            i_close = x_close - self.X_offset
-            i_empty = x_empty - self.X_offset
-            L_empty_space_close = self.l2_loss(i_close)
-            L_empty_space_empty = self.l2_loss(i_empty)
-            empty_input = torch.cat([i_close * self.scheduler_step("close"), i_empty])
+            L_empty_space_close = self.l2_loss(x_close)
+            L_empty_space_empty = self.l2_loss(x_empty)
+            empty_input = torch.cat([x_close * self.scheduler_step("close"), x_empty])
             L_empty_space = self.l2_loss(empty_input)
 
         # gradient constraint
@@ -481,12 +458,16 @@ class NeuralPoisson(L.LightningModule):
         if self.check_logging("metrics", batch_idx):
             self.logging_metrics(batch, output, "train")
         if self.check_logging("images", batch_idx):
-            self.logging_images(batch, "train")
-        if self.check_logging("optimizer", batch_idx):
-            self.logging_optimizer("train")
+            self.logging_images(batch, output, "train")
         if self.check_logging("mesh", batch_idx):
             self.logging_mesh(batch, "train")
         return output["total_loss"]
+
+    def on_before_optimizer_step(self, optimizer):
+        log_steps = self.hparams["log_optimizer_every_n_steps"]
+        batch_idx = self.trainer.global_step % log_steps
+        if self.check_logging("optimizer", batch_idx):
+            self.logging_optimizer()
 
     @torch.enable_grad()
     def validation_step(self, batch: dict, batch_idx: int):

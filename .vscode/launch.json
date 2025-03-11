@@ -19,7 +19,8 @@
             "request": "launch",
             "program": "neural_poisson/train.py",
             "args": [
-                // "data=debug",
+                "data=debug",
+                "trainer=debug",
                 "data.resolution=512",
                 "data.sigma=2.0",
                 "model/indicator_function=siren",
@@ -31,7 +32,7 @@
                 "model.lambda_surface=0.0",
                 "model.lambda_empty_space=0.0",
                 "model.log_images=True",
-                "model.log_mesh=False",
+                "model.log_mesh=True",
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -42,6 +43,7 @@
             "request": "launch",
             "program": "neural_poisson/train.py",
             "args": [
+                "trainer=debug",
                 "data=debug",
                 "data.resolution=512",
                 "data.sigma=2.0",
@@ -63,6 +65,7 @@
             "request": "launch",
             "program": "neural_poisson/train.py",
             "args": [
+                "trainer=debug",
                 "data=debug",
                 "data.resolution=512",
                 "data.sigma=2.0",
@@ -84,7 +87,8 @@
             "request": "launch",
             "program": "neural_poisson/train.py",
             "args": [
-                // "data=debug",
+                "trainer=debug",
+                "data=debug",
                 "data.resolution=512",
                 "data.sigma=2.0",
                 "model/indicator_function=positional_encoding",

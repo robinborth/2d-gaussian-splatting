@@ -8,6 +8,7 @@ optimizer: ???
 scheduler: ???
 
 # gradient computation mode
+mode: center
 gradient_compute_mode: analytical
 gradient_eps: 1e-05
 

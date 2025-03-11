@@ -16,8 +16,8 @@ persistent_workers: False
 shuffle: True
 
 # dataset settings
-dist: 2.0
-fov: 30.0
+dist: 3.0
+fov: 60
 image_size: 256
 segments: 12
 elev: 70.0

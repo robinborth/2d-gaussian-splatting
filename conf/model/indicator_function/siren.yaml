@@ -8,3 +8,4 @@ defaults:
 encoding:
   _target_: neural_poisson.model.encoding.IdentityEncoding
   _partial_: True
+  domain: ${data.domain}

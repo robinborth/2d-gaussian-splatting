@@ -1,6 +1,5 @@
 import logging
 import math
-import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
@@ -8,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 import torch
-from pytorch3d.io import load_objs_as_meshes
+from pytorch3d.io import load_objs_as_meshes, save_obj
 from pytorch3d.renderer import (
     CamerasBase,
     FoVPerspectiveCameras,
@@ -108,6 +107,11 @@ def load_mesh(path: str, device: str = "cuda"):
     return load_objs_as_meshes([path], device=device, load_textures=False)
 
 
+def save_mesh_pytorch3d(path: str | Path, mesh: Meshes):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    save_obj(path, mesh.verts_packed(), mesh.faces_packed())
+
+
 def load_mesh_o3d(path: str):
     mesh = load_mesh(path)
     return to_mesh_o3d(mesh)
@@ -127,6 +131,19 @@ def to_mesh_o3d(mesh: Meshes):
     m.triangles = o3d.utility.Vector3iVector(mesh.faces_packed().cpu().numpy())
     m.compute_vertex_normals()
     return m
+
+
+def scale_mesh(
+    mesh: Meshes,
+    domain: tuple[float, float] = (-1.0, 1.0),
+    domain_margin: float = 0.05,
+):
+    target_size = min(abs(domain[0]), abs(domain[1])) - domain_margin
+    mesh_size = mesh.verts_packed().abs().max()
+    scale = target_size / mesh_size
+    scaled_verts = mesh.verts_packed() * scale
+    mesh = Meshes(verts=[scaled_verts], faces=mesh.faces_list())
+    return mesh, scale
 
 
 ################################################################################

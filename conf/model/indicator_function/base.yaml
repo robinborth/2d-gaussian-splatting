@@ -2,7 +2,6 @@
 
 _target_: neural_poisson.model.implicit.IndicatorFunction
 _partial_: True
-mode: center 
 mlp: ???
 encoding: ???
 
