@@ -64,6 +64,27 @@ class ImplicitField(nn.Module):
             field.append(x.detach().cpu())
         return torch.cat(field).reshape(N, N, N)
 
+    @torch.no_grad()
+    def otsu_threshold(self, x: torch.Tensor, L: int = 128) -> float:
+        """Returns the otsu threshold that seperates gray-level histograms."""
+        counts, bins = torch.histogram(x.flatten().detach().cpu(), bins=L)
+        p = counts / counts.sum()
+
+        # compute the centers of the bins
+        bin_size = (bins[1:] - bins[:-1]).mean()
+        bin_center = bins[:-1] + (bin_size / 2)  # (L,)
+
+        # computes p[:k] * bin_center[:k]).sum() for each k
+        mK = torch.cumsum(p * bin_center, dim=0)  # (L, )
+        # computes p[:k].sum() for each k
+        wK = torch.cumsum(p, dim=0)  # (L, )
+        # computes the criterion form otsu paper (18)
+        criterions = ((mK[-1] * wK - mK) ** 2) / (wK * (1 - wK) + 1e-10)
+
+        # compute the otsu-threshold
+        threshold = bin_center[criterions.argmax()]
+        return threshold.item()
+
     def compute_gradient(
         self,
         points: torch.Tensor,
@@ -129,6 +150,8 @@ class ImplicitField(nn.Module):
         self,
         voxel_size: int = 256,
         isolevel: float = 0.0,
+        L: int = 128,
+        mode: str = "default",  # "default", "otsu"
     ) -> tuple[Meshes, torch.Tensor]:
         # evaluate the field on the grid nodes
         grid = self.compute_grid(voxel_size=voxel_size)  # (W, H, D)
@@ -141,6 +164,9 @@ class ImplicitField(nn.Module):
                 f"Isolevel is set to: {old_isolevel} and field is in range "
                 f"({grid.min()}, {grid.max()})! Change the isolevel to: {isolevel}"
             )
+
+        if mode == "otsu":
+            isolevel = self.otsu_threshold(grid, L=L)
 
         # perform marching cubes with pytorch3d
         sdf_grid = grid.permute(2, 1, 0)[None]  # (W, H, D) -> (1, D, H, W)
@@ -178,30 +204,9 @@ class IndicatorFunction(ImplicitField):
         """
         # initilize the indicator function
         super().__init__(mlp=mlp, encoding=encoding)
-
+        self.isolevel = 0.5
         # initilize to the correct device
         self.to(device)
-
-    @torch.no_grad()
-    def otsu_threshold(self, x: torch.Tensor, L: int = 128) -> float:
-        """Returns the otsu threshold that seperates gray-level histograms."""
-        counts, bins = torch.histogram(x.flatten().detach().cpu(), bins=L)
-        p = counts / counts.sum()
-
-        # compute the centers of the bins
-        bin_size = (bins[1:] - bins[:-1]).mean()
-        bin_center = bins[:-1] + (bin_size / 2)  # (L,)
-
-        # computes p[:k] * bin_center[:k]).sum() for each k
-        mK = torch.cumsum(p * bin_center, dim=0)  # (L, )
-        # computes p[:k].sum() for each k
-        wK = torch.cumsum(p, dim=0)  # (L, )
-        # computes the criterion form otsu paper (18)
-        criterions = ((mK[-1] * wK - mK) ** 2) / (wK * (1 - wK) + 1e-10)
-
-        # compute the otsu-threshold
-        threshold = bin_center[criterions.argmax()]
-        return threshold.item()
 
     def indicator(self, x: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
         assert 0.0 <= threshold <= 1.0
